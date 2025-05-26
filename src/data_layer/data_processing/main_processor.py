@@ -18,7 +18,7 @@ def main():
     # - "ollama" 需要Ollama服务正在运行。
     # - "deepseek" 需要在 .env 文件中配置 DEEPSEEK_API_KEY。
     # - "qwen" 需要在 .env 文件中配置 QWEN_API_KEY。
-    llm_type_to_test = "placeholder"  # <--- 修改这里进行测试
+    llm_type_to_test = "deepseek"  # <--- 修改这里进行测试
     
     # 可选: 为特定后端指定非默认模型参数 (如果不想用LLMInterface中的默认值)
     # 例如，测试不同的Ollama模型:

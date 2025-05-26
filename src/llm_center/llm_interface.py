@@ -16,7 +16,7 @@ class LLMInterface:
     def __init__(self, 
                  llm_type: str = "ollama", 
                  ollama_base_url: str = "http://localhost:11434", 
-                 ollama_model: str = "qwen2:7b", # 更新了 ollama 默认模型
+                 ollama_model: str = "qwen3:4b", # 更新了 ollama 默认模型
                  deepseek_model: str = "deepseek-chat",
                  qwen_model: str = "qwen-plus"
                  ):
