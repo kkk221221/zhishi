@@ -40,13 +40,23 @@ JSON结构说明如下：
     "acupuncture_moxibustion": "针灸治疗详情 (字符串，包含穴位、操作方法，如果缺失则为 null)",
     "other_treatments": "其他治疗方法 (字符串，如果缺失则为 null)"
   },
-  "treatment_outcome": "治疗结果及随访情况 (字符串，如果缺失则为 null)",
-  "notes_and_analysis": "病案总结、分析或医生心得 (字符串，如果缺失则为 null)"
+  "treatment_outcome": "治疗结果及随访情况 (字符串，如果缺失则为 null)", // This might capture overall outcome
+  "notes_and_analysis": "病案总结、分析或医生心得 (字符串，如果缺失则为 null)",
+  "follow_up_visits": [ // 复诊信息列表，如果无复诊记录，则为 null 或空列表 []
+    {
+      "visit_date": "复诊日期 (字符串 YYYY-MM-DD，如果格式不符或缺失则为 null)",
+      "symptoms_update": "症状更新 (字符串，描述患者症状的变化，如果缺失则为 null)",
+      "diagnosis_change": "诊断变化 (字符串，复诊后的诊断结论，如果缺失则为 null)",
+      "treatment_adjustment": "治疗调整 (字符串，描述治疗方案的调整内容，如果缺失则为 null)"
+    }
+    // ... (如果多次复诊，则在此处添加更多复诊对象)
+  ]
 }
 
 请注意：
 - 严格按照上述JSON结构输出。
 - 如果原文中某项信息明确不存在或未提及，请在该字段的值使用 `null` (JSON null类型) 或空字符串 ""。对于嵌套对象中的字段，如果整个对象的信息都缺失，可以使该对象值为 `null`，或者对象内所有字段值为 `null` / ""。请优先使用 `null` 表示缺失。
+- **复诊信息**：如果案例中包含一次或多次复诊记录，请将每次复诊的详细信息作为 `follow_up_visits` 列表中的一个独立对象进行填充。如果案例中没有明确的复诊记录，`follow_up_visits` 字段应为一个空列表 `[]` 或 `null`。每个复诊对象的字段（如 `visit_date`, `symptoms_update` 等）若信息缺失，同样使用 `null` 或空字符串。
 - 确保所有字符串值都使用双引号。
 - 不要输出任何JSON对象之外的额外解释、注释或任何其他文本。输出结果应该可以直接通过JSON解析器解析。
 
