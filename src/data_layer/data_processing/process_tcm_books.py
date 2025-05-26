@@ -331,44 +331,43 @@ def process_tcm_books(llm_interface: LLMInterface):
                 # Phase 3: File Naming, Directory Structure, and Saving
                 print(f"      Phase 3: 开始保存章节 “{section_title}” 的细粒度段落...")
                 
-                # paragraph_num for paragraphs directly under the main section_title
-                # This counter should ideally reset per section_title if there were multiple coarse sections.
-                # For now, with one coarse section, it's global for the book.
-                section_level_paragraph_num = 1 
-                
-                # Iterate through the list of dicts from perform_fine_grained_segmentation
-                # Each dict is like: {"sub_section_title": "Optional Title", "paragraphs": ["p1", "p2"]}
+                # 初始化文件名计数器字典 (每个主章节/书本重置)
+                filename_counters = {} 
+                total_paragraphs_saved_in_section = 0
+
                 for group_idx, para_group in enumerate(structured_paragraphs_data):
-                    sub_section_title_str = para_group.get("sub_section_title") # This is already cleaned by perform_fine_grained_segmentation
+                    sub_section_title_str = para_group.get("sub_section_title") # 已被 perform_fine_grained_segmentation 清理
                     paragraphs_list = para_group.get("paragraphs", [])
 
-                    # Clean the main section_title for use in filenames
+                    if not paragraphs_list:
+                        continue
+
                     safe_main_section_title = clean_filename(section_title)
-                    if not safe_main_section_title: # Default if empty after cleaning
+                    if not safe_main_section_title: 
                         safe_main_section_title = "未命名主章节"
 
+                    # 确定当前段落组的计数器键
                     if sub_section_title_str:
-                        # Paragraphs are under a sub-section
-                        # subsection_paragraph_num resets for each new sub_section_title (implicitly handled by iterating para_group)
-                        for sub_para_idx, para_content in enumerate(paragraphs_list):
-                            # Filename: f"{safe_section_title}-{current_subsection_name}_{subsection_paragraph_num}.txt"
-                            # current_subsection_name is sub_section_title_str
-                            # subsection_paragraph_num is sub_para_idx + 1
-                            output_filename = f"{safe_main_section_title}-{sub_section_title_str}_{sub_para_idx + 1}.txt"
-                            output_file_path = os.path.join(book_output_dir, output_filename)
-                            write_text_file(output_file_path, para_content)
-                            # print(f"        已保存子章节段落: {output_filename}")
+                        counter_key = f"{safe_main_section_title}-{sub_section_title_str}"
                     else:
-                        # Paragraphs are directly under the main section
-                        for main_para_idx, para_content in enumerate(paragraphs_list):
-                            # Filename: f"{safe_section_title}_{paragraph_num}.txt"
-                            # paragraph_num is section_level_paragraph_num, then incremented
-                            output_filename = f"{safe_main_section_title}_{section_level_paragraph_num}.txt"
-                            output_file_path = os.path.join(book_output_dir, output_filename)
-                            write_text_file(output_file_path, para_content)
-                            # print(f"        已保存主章节段落: {output_filename}")
-                            section_level_paragraph_num += 1 
-                print(f"      章节 “{section_title}” 的所有细粒度段落已保存。")
+                        counter_key = safe_main_section_title
+
+                    # 遍历当前组的所有段落，并使用 filename_counters 来获取正确的序号
+                    for para_content in paragraphs_list:
+                        # 获取并更新当前键的序号
+                        current_paragraph_number = filename_counters.get(counter_key, 0) + 1
+                        filename_counters[counter_key] = current_paragraph_number
+
+                        if sub_section_title_str:
+                            output_filename = f"{safe_main_section_title}-{sub_section_title_str}_{current_paragraph_number}.txt"
+                        else:
+                            output_filename = f"{safe_main_section_title}_{current_paragraph_number}.txt"
+                        
+                        output_file_path = os.path.join(book_output_dir, output_filename)
+                        write_text_file(output_file_path, para_content)
+                        total_paragraphs_saved_in_section += 1
+                
+                print(f"      章节 “{section_title}” 的所有 {total_paragraphs_saved_in_section} 个细粒度段落已保存。")
             
     print("\n所有中医典籍处理完毕。")
 

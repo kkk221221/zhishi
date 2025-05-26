@@ -75,7 +75,7 @@ TCM_BOOK_CHUNK_SEGMENTATION_TEMPLATE = """
 
 # Phase 2: Fine-Grained Semantic Paragraph Splitting Prompt
 SEMANTIC_MICRO_PARAGRAPH_SPLIT_TEMPLATE = """
-你的任务是将来自文档《{document_title}》的章节“{section_title}”中的以下文本片段，拆分成【尽可能短、同时在语义上完整且自成一体】的段落。
+你的任务是将来自文档《{document_title}》的章节“{section_title}”中的以下文本片段，拆分成【简洁且意思完整】的段落。每个段落应围绕一个核心观点或主题，确保其独立存在时易于理解，同时服务于整体章节的意义。请避免过度拆分，导致段落因缺乏上下文而变得支离破碎或难以理解。
 
 每个段落都应代表一个单一、清晰的观点、事实、事件，或者是一个过程或论证中的最小逻辑步骤。
 请确保每个段落，无论多短，本身都能讲得通，同时又服务于整个章节的意义。
