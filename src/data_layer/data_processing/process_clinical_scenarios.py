@@ -2,9 +2,10 @@
 # 处理临床案例的脚本
 
 import os
+import json # 新增JSON导入
 from src.llm_center.llm_interface import LLMInterface
 from src.data_layer.data_processing.utils import read_text_file, write_text_file, ensure_directory_exists, clean_filename
-from src.data_layer.data_processing.prompts.clinical_prompts import CLINICAL_CASE_STANDARDIZATION_TEMPLATE
+from src.data_layer.data_processing.prompts.clinical_prompts import CLINICAL_CASE_JSON_EXTRACTION_TEMPLATE # 更改导入的模板
 
 RAW_CLINICAL_DIR = "src/data_layer/data/raw/clinical_scenario"
 PROCESSED_CLINICAL_DIR = "src/data_layer/data/processed/clinical_scenario"
@@ -53,21 +54,45 @@ def process_clinical_scenarios(llm_interface: LLMInterface):
                     print(f"    警告: 未能读取文件内容或文件为空: {raw_file_path}")
                     continue
 
-                # 构建提示词进行标准化
-                prompt = CLINICAL_CASE_STANDARDIZATION_TEMPLATE.format(case_content=case_content)
+                # 构建提取JSON的提示词
+                prompt = CLINICAL_CASE_JSON_EXTRACTION_TEMPLATE.format(case_content=case_content)
                 
-                # 调用LLM进行处理
-                standardized_content = llm_interface.generate_text(prompt)
+                # 调用LLM进行处理，期望返回JSON字符串
+                llm_output_str = llm_interface.generate_text(prompt)
                 
-                # 定义输出文件名，例如 "some_case_processed.txt"
-                # 使用clean_filename确保文件名合法，尽管这里只是添加后缀
+                if not llm_output_str or not llm_output_str.strip():
+                    print(f"    警告: LLM对于文件 {filename} 返回了空响应。跳过此文件。")
+                    continue
+
+                try:
+                    extracted_data = json.loads(llm_output_str)
+                except json.JSONDecodeError as e:
+                    print(f"    错误: 解析文件 {filename} 的LLM输出为JSON时失败: {e}")
+                    print(f"    LLM原始输出 (前500字符): {llm_output_str[:500]}")
+                    # 可选：将原始错误输出保存到特定文件
+                    # error_filename = f"{base}_error.txt"
+                    # error_file_path = os.path.join(current_output_dir, error_filename)
+                    # write_text_file(error_file_path, f"Error parsing JSON from LLM for {filename}:\n{e}\nRaw output:\n{llm_output_str}")
+                    continue # 跳过此文件
+
+                # 定义输出JSON文件名
                 base, ext = os.path.splitext(filename)
-                # cleaned_base = clean_filename(base) # 可选，如果原始文件名也可能包含非法字符
-                output_filename = f"{base}_processed{ext}" # 保留原始扩展名
+                # 使用 clean_filename 清理基础文件名，确保文件名在各系统上有效且整洁
+                cleaned_base = clean_filename(base) 
+                if not cleaned_base: # 万一清理后文件名变为空（例如，原文件名只包含非法字符）
+                    cleaned_base = f"untitled_case_{os.path.basename(raw_file_path).split('.')[0]}" # 提供一个基于原始路径的备用名
+                output_filename = f"{cleaned_base}.json" # 新的文件名为 .json
                 output_file_path = os.path.join(current_output_dir, output_filename)
                 
-                write_text_file(output_file_path, standardized_content)
-                print(f"    标准化案例已保存至: {output_file_path}")
+                # 将提取的数据作为JSON字符串写入文件
+                # 使用 ensure_ascii=False 来正确处理中文字符，indent=4 来格式化输出
+                try:
+                    json_output_content = json.dumps(extracted_data, ensure_ascii=False, indent=4)
+                    write_text_file(output_file_path, json_output_content)
+                    print(f"    提取的JSON数据已保存至: {output_file_path}")
+                except Exception as e:
+                    print(f"    错误: 将提取的JSON数据写入文件 {output_file_path} 时失败: {e}")
+                    continue
             else:
                 print(f"  跳过非 .txt 文件: {os.path.join(root, filename)}")
             
