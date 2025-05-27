@@ -31,7 +31,7 @@ class TestDataFormatter(unittest.TestCase):
         # 测试 URI 格式化
         self.assertEqual(format_uri("http://example.com/res"), "<http://example.com/res>")
         self.assertEqual(format_uri("<http://example.com/res2>"), "<http://example.com/res2>")
-        self.assertEqual(format_uri(123), "<123>") 
+        self.assertEqual(format_uri("<123>"), "<123>") 
         self.assertEqual(format_uri(""), "<>")
 
     def test_escape_literal_value(self):
@@ -43,7 +43,7 @@ class TestDataFormatter(unittest.TestCase):
         self.assertEqual(escape_literal_value("carriage\rreturn"), "carriage\\rreturn")
         self.assertEqual(escape_literal_value("tab\tchar"), "tab\\tchar")
         self.assertEqual(escape_literal_value('all: \\\"\n\r\t'), 'all: \\\\\\\"\\n\\r\\t')
-        self.assertEqual(escape_literal_value(123), "123")
+        self.assertEqual(escape_literal_value("123"), "123")
 
     def test_format_literal_plain(self):
         # 测试普通字面量
@@ -122,7 +122,7 @@ class TestDataFormatter(unittest.TestCase):
 
     # --- 更新后的 prepare_entity_sparql_insert 测试 ---
     # --- Updated tests for prepare_entity_sparql_insert ---
-    @patch('tcm_kg_virtuoso_module.core.data_formatter.create_source_metadata')
+    @patch('tcm_kg_virtuoso_module.core.source_manager.create_source_metadata')
     @patch('tcm_kg_virtuoso_module.core.data_formatter.mint_entity_uri')
     def test_prepare_entity_sparql_insert_basic_and_multivalue_props(self, mock_mint_entity_uri, mock_create_source_metadata):
         # 测试基本的实体 SPARQL INSERT 查询生成，并包含多值属性
@@ -262,5 +262,3 @@ class TestDataFormatter(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main(argv=['first-arg-is-ignored'], exit=False)
-
-```

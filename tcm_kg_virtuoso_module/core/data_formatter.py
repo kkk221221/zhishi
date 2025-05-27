@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Union, Tuple # 确保导入 Union 和 T
 from tcm_kg_virtuoso_module.config import settings
 from tcm_kg_virtuoso_module.config.settings import DEFAULT_PREFIXES # 显式导入以供 _expand_curie 使用
 from .uri_minter import mint_entity_uri
-from .source_manager import create_source_metadata
+
 
 
 # 通用数据类型，使用 XSD 命名空间
@@ -85,7 +85,7 @@ def format_literal(value, datatype: str = None, lang: str = None) -> str:
             print(f"警告：数据类型 '{datatype}' 未被识别。将省略数据类型。") # Chinese warning
             # Fall through to plain literal without lang
     
-    if lang:
+    if lang is not None:
         # 考虑对 lang 进行基本验证，例如符合 BCP 47 标准
         # Consider basic validation for lang, e.g., conforming to BCP 47 standards
         # 此处仅作简单示例
@@ -98,6 +98,7 @@ def format_literal(value, datatype: str = None, lang: str = None) -> str:
             # If lang is invalid, print a warning and treat as a plain literal
             print(f"警告：语言标签 '{lang}' 无效。将省略语言标签。") # Chinese warning
             # Fall through to plain literal
+            return f'"{escaped_value}"'
 
     return f'"{escaped_value}"' # 普通字面量
                                # Plain literal
@@ -172,6 +173,7 @@ def prepare_entity_sparql_insert(
     entity_id_args: Optional[List[str]] = None
 ) -> Tuple[str, str]: # 返回类型更改为元组 (SPARQL查询, 实体URI)
                       # Return type changed to tuple (SPARQL query, entity URI)
+    from .source_manager import create_source_metadata
     """
     准备用于插入实体及其元数据的SPARQL INSERT查询。
 
