@@ -5,35 +5,12 @@ from ..graph_db.virtuoso_connector import VirtuosoConnector
 from ..graph_db import sparql_builder
 from ..core import config as app_config # 使用 app_config 避免与方法参数名冲突
 from ..utils.uri_utils import validate_uri_format, generate_entity_uri # 假设未来可能用到 generate_entity_uri
-
-from typing import Optional, List, Dict, Any, Tuple, TypedDict, Literal # Added TypedDict, Literal
-
-# TypedDicts for SPARQL JSON results (basic structure)
-class SparqlBindingValue(TypedDict, total=False):
-    """单个SPARQL绑定值的结构 (例如 ?s, ?p, ?o 中的一个) """
-    type: Literal["uri", "literal", "typed-literal", "bnode"] # 值类型
-    value: str  # 值本身
-    datatype: Optional[str] # 数据类型URI (例如 xsd:integer)，仅当type为typed-literal时存在
-    # xml_lang: Optional[str] # 语言标签 (例如 @en)，仅当type为literal且有语言标签时存在
-
-class SparqlBinding(TypedDict):
-    """SPARQL查询结果中单个绑定行 (binding) 的结构。"""
-    # 键是查询中的变量名 (例如 "s", "p", "o", "predicate", "object")
-    # 这里我们为 get_entity_by_uri 中明确使用的 "predicate" 和 "object" 定义
-    predicate: SparqlBindingValue
-    object: SparqlBindingValue
-    # 如果其他变量也总是存在，可以在这里添加
-    # 或者，更通用的做法是 Dict[str, SparqlBindingValue]，但显式定义有助于类型检查
-
-class SparqlSelectResults(TypedDict):
-    """SPARQL SELECT查询结果中 "results" 键对应的值的结构。"""
-    bindings: List[SparqlBinding]
-
-class SparqlQuerySolution(TypedDict, total=False): # total=False因为ASK查询没有results但有boolean
-    """SPARQL查询返回的完整JSON对象的顶层结构 (简化版)。"""
-    # head: Dict[str, List[str]] # 如果需要处理 head 部分
-    results: SparqlSelectResults
-    boolean: Optional[bool] # 对于ASK查询
+# Import the new TypedDicts from their new location
+from ..graph_db.sparql_types import SparqlQuerySolution, SparqlSelectResults, SparqlBinding, SparqlBindingValue
+# Ensure Literal is imported if it's used elsewhere, or if type hints in this file still need it directly.
+# For now, assuming it's primarily for the TypedDicts that were moved.
+# The main typing imports (Optional, List, Dict, Any, Tuple) are at the top of the file.
+from typing import Literal # Retain Literal if it's used for other type hints in this file, otherwise it's not strictly needed here.
 
 class EntityService:
     """

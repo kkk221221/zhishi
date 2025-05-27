@@ -1,10 +1,11 @@
 # tcm_kg_virtuoso_module/services/relationship_service.py
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Dict, Any # Ensure Tuple is here if needed elsewhere
 from ..models.tcm_relationship import TCMRelationship
 from ..graph_db.virtuoso_connector import VirtuosoConnector
 from ..graph_db import sparql_builder
 from ..core import config as app_config
 from ..utils.uri_utils import validate_uri_format
+from ..graph_db.sparql_types import SparqlQuerySolution, SparqlSelectResults, SparqlBindingValue # Added
 
 class RelationshipService:
     """
@@ -77,16 +78,7 @@ class RelationshipService:
     def get_relationships_for_entity(self, entity_uri: str, direction: str = "all") -> List[TCMRelationship]:
         """
         检索与指定实体相关的所有关系。
-
-        参数:
-            entity_uri (str): 实体的URI。
-            direction (str): 查询方向。
-                             "outgoing" - 查询以此实体为主语 (source) 的关系。
-                             "incoming" - 查询以此实体为宾语 (target) 的关系。
-                             "all"      - 查询上述两种关系。 默认为 "all"。
-
-        返回:
-            List[TCMRelationship]: 关系对象列表。如果未找到则返回空列表。
+        # ... (rest of docstring) ...
         """
         if not entity_uri or not validate_uri_format(entity_uri):
             raise ValueError(f"要查询关系的实体URI '{entity_uri}' 无效。")
@@ -95,93 +87,67 @@ class RelationshipService:
         if direction.lower() not in allowed_directions:
             raise ValueError(f"参数 'direction' 的值必须是 {allowed_directions} 之一。")
 
-        query_parts = []
         entity_uri_formatted = sparql_builder._format_term(entity_uri, is_uri=True)
-
-        if direction.lower() in ["outgoing", "all"]:
-            query_parts.append(f"  {{ {entity_uri_formatted} ?p_out ?o_out . BIND({entity_uri_formatted} AS ?s_out) }}")
         
-        if direction.lower() in ["incoming", "all"]:
-            query_parts.append(f"  {{ ?s_in ?p_in {entity_uri_formatted} . BIND({entity_uri_formatted} AS ?o_in) }}")
-        
-        union_query_body = "\n  UNION\n".join(query_parts)
-
-        # 统一变量名 s, p, o
-        # 对于 outgoing: s = entity_uri, p = p_out, o = o_out
-        # 对于 incoming: s = s_in, p = p_in, o = entity_uri
-        # 我们需要查询并绑定 s, p, o 三个变量
-        
-        sparql_query = f"""
-{sparql_builder.SPARQL_PREFIXES}
-
-SELECT DISTINCT ?s ?p ?o
-WHERE {{
-  GRAPH <{self.default_graph}> {{
-    {union_query_body}
-    # 统一变量绑定
-    OPTIONAL {{ ?s_out ?p_out ?o_out . BIND(?s_out AS ?s) BIND(?p_out AS ?p) BIND(?o_out AS ?o) }}
-    OPTIONAL {{ ?s_in ?p_in ?o_in . BIND(?s_in AS ?s) BIND(?p_in AS ?p) BIND(?o_in AS ?o) }}
-    # 确保只选择相关的三元组
-    FILTER(BOUND(?s) && BOUND(?p) && BOUND(?o))
-  }}
-}}
-"""
-        # 上述查询逻辑可以通过更精简的方式构建，这里是为了清晰展示两个方向的合并
-        # 一个更简洁的SELECT部分可以是：
-        # SELECT DISTINCT ?subject ?predicate ?object
-        # WHERE {
-        #   GRAPH <{self.default_graph}> {
-        #     { BIND({entity_uri_formatted} as ?subject) . ?subject ?predicate ?object . } # Outgoing
-        #     UNION
-        #     { BIND({entity_uri_formatted} as ?object) . ?subject ?predicate ?object . }  # Incoming
-        #   }
-        #   # 根据direction进行FILTER
-        # }
-        #
-        # 根据direction调整查询：
-        select_subject = "?s"
-        select_predicate = "?p"
-        select_object = "?o"
+        select_subject_var = "s" # Query variable name without '?'
+        select_predicate_var = "p"
+        select_object_var = "o"
         
         where_clauses = []
         if direction.lower() in ["outgoing", "all"]:
-            where_clauses.append(f"    {{ {entity_uri_formatted} {select_predicate} {select_object} . BIND({entity_uri_formatted} as {select_subject}) }}")
+            where_clauses.append(f"    {{ {entity_uri_formatted} ?{select_predicate_var} ?{select_object_var} . BIND({entity_uri_formatted} as ?{select_subject_var}) }}")
         if direction.lower() in ["incoming", "all"]:
-            where_clauses.append(f"    {{ {select_subject} {select_predicate} {entity_uri_formatted} . BIND({entity_uri_formatted} as {select_object}) }}")
+            where_clauses.append(f"    {{ ?{select_subject_var} ?{select_predicate_var} {entity_uri_formatted} . BIND({entity_uri_formatted} as ?{select_object_var}) }}")
+
+        if not where_clauses: # Should not happen due to direction validation
+            return []
 
         final_sparql_query = f"""
 {sparql_builder.SPARQL_PREFIXES}
-SELECT DISTINCT {select_subject} {select_predicate} {select_object}
+SELECT DISTINCT ?{select_subject_var} ?{select_predicate_var} ?{select_object_var}
 WHERE {{
   GRAPH <{self.default_graph}> {{
     {' UNION '.join(where_clauses)}
   }}
 }}
 """
-
-        results = self.connector.execute_select_query(final_sparql_query)
+        results_data: Optional[SparqlQuerySolution] = self.connector.execute_select_query(final_sparql_query)
         relationships: List[TCMRelationship] = []
 
-        if results and results.get("results", {}).get("bindings"):
-            for binding in results["results"]["bindings"]:
-                try:
-                    s = binding[select_subject.lstrip("?")]["value"]
-                    p = binding[select_predicate.lstrip("?")]["value"]
-                    obj_binding = binding[select_object.lstrip("?")]
-                    
-                    # 对象可能是URI或字面量
-                    o = obj_binding["value"]
-                    # if obj_binding["type"] == "literal" or obj_binding["type"] == "typed-literal":
-                    #   o = sparql_builder._format_term(o, is_uri=False) # 确保字面量被正确引用 (如果需要)
-                    # else: # uri or bnode
-                    #   o = sparql_builder._format_term(o, is_uri=True) # 确保URI被正确引用 (如果需要)
-                    # TCMRelationship 的 target_uri 期望是一个URI字符串或代表字面量的字符串
-                    # sparql_builder._format_term 内部会处理，这里直接用值
+        if results_data is None:
+            return relationships # Empty list
+        
+        sparql_results: Optional[SparqlSelectResults] = results_data.get("results")
+        if sparql_results is None:
+            return relationships
 
-                    relationships.append(TCMRelationship(source_uri=s, predicate_uri=p, target_uri=o))
-                except KeyError as e:
-                    print(f"解析关系结果时出错: 缺少键 {e}。绑定: {binding}")
+        bindings: List[Dict[str, SparqlBindingValue]] = sparql_results.get("bindings", [])
+
+        for binding in bindings: # binding is Dict[str, SparqlBindingValue]
+            try:
+                s_val_dict = binding.get(select_subject_var)
+                p_val_dict = binding.get(select_predicate_var)
+                o_val_dict = binding.get(select_object_var)
+
+                if not (s_val_dict and p_val_dict and o_val_dict):
+                    # print(f"警告: 在实体 <{entity_uri}> 的关系结果中发现不完整的绑定变量: {binding}") # 日志
                     continue
+
+                s_uri: Optional[str] = s_val_dict.get("value")
+                p_uri: Optional[str] = p_val_dict.get("value")
+                # target_val can be URI or literal, its "value" is always a string from SPARQLWrapper
+                target_val: Optional[str] = o_val_dict.get("value") 
+                # target_type: Optional[str] = o_val_dict.get("type") # If needed to distinguish literal/URI for TCMRelationship
+
+                if not (s_uri and p_uri and target_val is not None): # target_val can be empty string for empty literal
+                    # print(f"警告: 在实体 <{entity_uri}> 的关系结果中发现绑定缺少'value': {binding}") # 日志
+                    continue
+                
+                # TCMRelationship expects target_uri as str (can be URI or literal value)
+                relationships.append(TCMRelationship(source_uri=s_uri, predicate_uri=p_uri, target_uri=target_val))
+            except Exception as e: # Catch any unexpected error during binding processing
+                # print(f"解析关系结果时发生意外错误: {e}。绑定: {binding}") # 日志
+                continue
         return relationships
 
     def delete_relationship(self, source_uri: str, predicate_uri: str, target_uri: str) -> bool:

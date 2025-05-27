@@ -2,6 +2,8 @@
 from SPARQLWrapper import SPARQLWrapper, JSON, XML, N3, RDFXML
 from SPARQLWrapper.SPARQLExceptions import QueryBadFormed, EndPointNotFound, SPARQLWrapperException
 from ..core.config import VIRTUOSO_URL, VIRTUOSO_USER, VIRTUOSO_PASSWORD, DEFAULT_GRAPH_URI, get_sparql_prefixes
+from .sparql_types import SparqlQuerySolution # Added import
+from typing import Optional, Union, Dict, Any # Added typing imports
 
 # Common return formats for SELECT queries
 RETURN_FORMAT_JSON = JSON
@@ -38,7 +40,7 @@ class VirtuosoConnector:
         # For UPDATE queries, setReturnFormat is not applicable in the same way.
         # SPARQLWrapper handles this via queryType or directly in execute_update.
 
-    def execute_select_query(self, query_string: str, return_format=RETURN_FORMAT_JSON) -> dict | str | None:
+    def execute_select_query(self, query_string: str, return_format=RETURN_FORMAT_JSON) -> Optional[SparqlQuerySolution]:
         """
         Executes a SPARQL SELECT or ASK query.
         For ASK queries, result will be {'boolean': True/False}.
@@ -61,7 +63,7 @@ class VirtuosoConnector:
             print(f"An unexpected error occurred during SELECT query execution: {e}")
         return None
 
-    def execute_construct_describe_query(self, query_string: str, query_type: str = "CONSTRUCT", return_format=RETURN_FORMAT_RDFXML) -> str | bytes | None:
+    def execute_construct_describe_query(self, query_string: str, query_type: str = "CONSTRUCT", return_format=RETURN_FORMAT_RDFXML) -> Optional[Union[str, bytes]]:
         """
         Executes a SPARQL CONSTRUCT or DESCRIBE query.
         Returns results as a string (e.g., RDF/XML, Turtle) or bytes.
