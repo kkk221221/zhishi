@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     virtuoso_user: str = "dba"
     virtuoso_password: str = "dba"
     virtuoso_graph_uri: str = "http://tcm.example.org/graph" # 默认图URI示例
-                                                            # Example default graph URI
+
 
     class Config:
         env_file = ".env" # 允许从 .env 文件加载配置

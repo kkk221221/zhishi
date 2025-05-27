@@ -19,7 +19,7 @@ class VirtuosoConnectionManager:
         - default_graph_uri (Optional[str]): 默认图URI (当前未使用，但保留以备将来之需)。
                                             Default graph URI (currently unused, but kept for future needs).
         """
-        self.driver: str = "{Virtuoso}" # ODBC 驱动名称，需要确保系统中已安装并配置
+        self.driver: str = "{Virtuoso (Open Source)}" # ODBC 驱动名称，需要确保系统中已安装并配置
                                        # ODBC driver name, ensure it's installed and configured in the system
         self.server: str = host
         self.port: int = port
@@ -27,13 +27,15 @@ class VirtuosoConnectionManager:
                                    # Virtuoso's default database name is usually VOS or virtuoso
         self.user: str = user
         self.password: str = password
-        self.conn_string: str = (
-            f"DRIVER={self.driver};SERVER={self.server},{self.port};"
-            f"DATABASE={self.database};UID={self.user};PWD={self.password};"
-            # 根据需要添加更多连接参数，例如：
-            # Add more connection parameters as needed, e.g.:
-            # ReadOnly=N; ResultSetMode=Scrollable; MaxQueryTimeout=0;
-        )
+        dsn_name = "VirtuosoDSN"  # O DSN que você criou e testou
+        self.conn_string: str = f"DSN={dsn_name};UID={self.user};PWD={self.password};LoginTimeout=30;"
+        #self.conn_string: str = (
+        #    f"DRIVER={self.driver};SERVER={self.server},{self.port};"
+        #    f"DATABASE={self.database};UID={self.user};PWD={self.password};"
+        #    # 根据需要添加更多连接参数，例如：
+        #    # Add more connection parameters as needed, e.g.:
+        #    # ReadOnly=N; ResultSetMode=Scrollable; MaxQueryTimeout=0;
+        #)
         self.connection: Optional[pyodbc.Connection] = None
         self.cursor: Optional[pyodbc.Cursor] = None
         self.transaction_active: bool = False # 跟踪事务状态

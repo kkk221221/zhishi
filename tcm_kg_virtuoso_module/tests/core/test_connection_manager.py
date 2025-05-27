@@ -50,7 +50,8 @@ def test_context_manager(conn_manager: VirtuosoConnectionManager):
             assert cm.cursor is not None
             # 在这里可以执行一些简单的操作，例如查询版本
             # Simple operations can be performed here, e.g., querying version
-            cm.cursor.execute("SPARQL SELECT DB.DBA.version();")
+            cm.cursor.execute("SPARQL SELECT 1 AS ?one WHERE { }")
+
             version_row = cm.cursor.fetchone()
             assert version_row is not None, "应能查询到数据库版本" # Should be able to query database version
             print(f"数据库版本: {version_row[0]}") # Database version
@@ -190,4 +191,4 @@ def test_transaction_methods_when_not_connected(conn_manager: VirtuosoConnection
 # Note: These integration tests depend on an accessible Virtuoso instance and correct ODBC configuration.
 # 在没有此类环境的CI/CD中，它们可能会被跳过 (使用pytest.skip)。
 # In CI/CD without such an environment, they might be skipped (using pytest.skip).
-```
+

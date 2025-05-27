@@ -132,8 +132,8 @@ def test_attribute_model_edge_cases():
     assert attr_empty_list.value == []
 
     # Test with non-http URL (should be fine as HttpUrl validates protocol)
-    with pytest.raises(ValidationError): # Pydantic v2 raises error for non-http/https
-         Attribute(property="ftp_link", value=HttpUrl("ftp://example.com"))
+    with pytest.raises(ValidationError,match="URL scheme not permitted"):  # Pydantic v2 raises error for non-http/https
+        HttpUrl("ftp://example.com")
 
 
 def test_source_model_empty_fields():
