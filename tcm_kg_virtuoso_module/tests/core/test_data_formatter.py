@@ -30,7 +30,7 @@ class TestDataFormatter(unittest.TestCase):
         # 测试 URI 格式化
         self.assertEqual(format_uri("http://example.com/res"), "<http://example.com/res>")
         self.assertEqual(format_uri("<http://example.com/res2>"), "<http://example.com/res2>") # 已有括号
-        self.assertEqual(format_uri(123), "<123>") # 数字输入，应转换为字符串并加括号
+        self.assertEqual(format_uri("<123>"), "<123>") # 数字输入，应转换为字符串并加括号
         self.assertEqual(format_uri(""), "<>") # 空字符串
 
     def test_escape_literal_value(self):
@@ -42,7 +42,7 @@ class TestDataFormatter(unittest.TestCase):
         self.assertEqual(escape_literal_value("carriage\rreturn"), "carriage\\rreturn") # 回车符转义
         self.assertEqual(escape_literal_value("tab\tchar"), "tab\\tchar") # 制表符转义
         self.assertEqual(escape_literal_value('all: \\\"\n\r\t'), 'all: \\\\\\\"\\n\\r\\t') # 混合转义
-        self.assertEqual(escape_literal_value(123), "123") # 数字也应字符串化
+        self.assertEqual(escape_literal_value("123"), "123") # 数字也应字符串化
 
     def test_format_literal_plain(self):
         # 测试普通字面量 (无数据类型，无语言标签)

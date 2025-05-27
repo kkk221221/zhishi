@@ -55,7 +55,7 @@ def escape_literal_value(value: str) -> str:
         value = str(value)
     return value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
 
-def format_literal(value, datatype: str = None, lang: str = None) -> str:
+def format_literal(value, datatype: Optional[str] = None, lang: Optional[str] = None) -> str:
     """
     格式化RDF字面量。
     使用 escape_literal_value 对输入值进行转义。
