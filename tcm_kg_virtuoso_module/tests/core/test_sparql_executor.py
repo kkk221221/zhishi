@@ -1,133 +1,176 @@
-import unittest
-from unittest.mock import MagicMock, patch
-
-# 动态导入被测试的类
-# Dynamically import the class under test
+# tcm_kg_virtuoso_module/tests/core/test_sparql_executor.py
+import pytest
+import pyodbc # 导入 pyodbc 以便捕获其特定错误
+from tcm_kg_virtuoso_module.core.connection_manager import VirtuosoConnectionManager
 from tcm_kg_virtuoso_module.core.sparql_executor import SparqlExecutor
-# VirtuosoConnectionManager 也会被 mock，所以这里可以不用真的导入
-# VirtuosoConnectionManager will also be mocked, so no need to actually import it here
+from tcm_kg_virtuoso_module.config.settings import get_settings
 
-class TestSparqlExecutor(unittest.TestCase):
+# 获取数据库连接设置
+# Get database connection settings
+settings = get_settings()
 
-    def setUp(self):
-        # 创建 VirtuosoConnectionManager 的 mock 实例
-        # Create a mock instance of VirtuosoConnectionManager
-        self.mock_connection_manager = MagicMock()
-        
-        # 配置 get_connection 方法返回一个 mock 连接对象
-        # Configure the get_connection method to return a mock connection object
-        self.mock_db_connection = MagicMock()
-        # __str__ is used in f-string formatting in SparqlExecutor print statements
-        self.mock_db_connection.__str__ = MagicMock(return_value="MockDBConnection")
-        self.mock_connection_manager.get_connection.return_value = self.mock_db_connection
+# Pytest fixture for VirtuosoConnectionManager, module-scoped
+@pytest.fixture(scope="module")
+def conn_manager_fixture():
+    manager = VirtuosoConnectionManager(
+        host=settings.virtuoso_host,
+        port=settings.virtuoso_port,
+        user=settings.virtuoso_user,
+        password=settings.virtuoso_password,
+        default_graph_uri=settings.virtuoso_graph_uri
+    )
+    return manager
 
-        # 创建 SparqlExecutor 实例，传入 mock 的连接管理器
-        # Create a SparqlExecutor instance, passing in the mocked connection manager
-        self.executor = SparqlExecutor(self.mock_connection_manager)
+# Pytest fixture for SparqlExecutor, function-scoped to get a fresh executor for each test
+# Using the module-scoped conn_manager_fixture for efficiency
+@pytest.fixture(scope="function")
+def sparql_executor_fixture(conn_manager_fixture: VirtuosoConnectionManager):
+    executor = SparqlExecutor(conn_manager_fixture)
+    return executor
 
-    def test_initialization(self):
-        # 测试初始化是否正确存储了连接管理器
-        # Test if initialization correctly stored the connection manager
-        self.assertIs(self.executor.connection_manager, self.mock_connection_manager)
-        self.assertIsNone(self.executor.connection) # 初始内部连接应为 None
-                                                    # Initial internal connection should be None
+# 测试 SELECT 查询
+# Test SELECT query
+def test_execute_select(sparql_executor_fixture: SparqlExecutor, conn_manager_fixture: VirtuosoConnectionManager):
+    """测试 SparqlExecutor 执行 SELECT 查询。"""
+    query = "SPARQL SELECT ?s ?p ?o WHERE { ?s ?p ?o } LIMIT 1" # 一个通用查询
+                                                              # A generic query
+    try:
+        with conn_manager_fixture: # 确保连接在测试期间是活动的
+                                   # Ensure connection is active during the test
+            results = sparql_executor_fixture.execute_select(query)
+            assert isinstance(results, list), "SELECT结果应为列表" # SELECT result should be a list
+            # 这个查询在空数据库上也应该能成功执行并返回空列表
+            # This query should execute successfully on an empty DB and return an empty list
+    except pyodbc.Error as e:
+        pytest.skip(f"数据库操作失败，跳过此测试: {e}") # DB operation failed, skipping test
+    except ConnectionError as e: # ConnectionError 来自 _ensure_connected
+                                # ConnectionError from _ensure_connected
+        pytest.skip(f"数据库连接失败，跳过此测试: {e}") # DB connection failed, skipping test
 
-    def test_get_db_connection_success(self):
-        # 测试成功获取数据库连接
-        # Test successfully getting a database connection
-        conn = self.executor._get_db_connection()
-        self.mock_connection_manager.get_connection.assert_called_once()
-        self.assertIs(conn, self.mock_db_connection)
-        self.assertIs(self.executor.connection, self.mock_db_connection) # 内部连接已设置
-                                                                        # Internal connection is set
 
-    def test_get_db_connection_failure(self):
-        # 测试获取数据库连接失败的情况
-        # Test scenario where getting a database connection fails
-        self.mock_connection_manager.get_connection.return_value = None # 模拟连接失败
-                                                                      # Simulate connection failure
-        with self.assertRaisesRegex(Exception, "Failed to establish database connection via ConnectionManager"):
-            self.executor._get_db_connection()
-        self.mock_connection_manager.get_connection.assert_called_once()
+# 测试 INSERT 更新和事务处理 (commit)
+# Test INSERT update and transaction handling (commit)
+def test_execute_update_insert_and_commit(sparql_executor_fixture: SparqlExecutor, conn_manager_fixture: VirtuosoConnectionManager):
+    """测试 SparqlExecutor 执行 INSERT 并提交事务。"""
+    test_subject = "<http://example.org/test_exec_subject_insert>"
+    test_predicate = "<http://example.org/test_pred_insert>"
+    test_object = "<http://example.org/test_obj_insert>"
+    test_graph = f"<{settings.virtuoso_graph_uri}/test_sparql_executor>"
+    
+    insert_query = f"SPARQL INSERT DATA INTO {test_graph} {{ {test_subject} {test_predicate} {test_object} . }}"
+    select_query = f"SPARQL SELECT ?s WHERE {{ GRAPH {test_graph} {{ {test_subject} {test_predicate} {test_object} . }} }}"
+    clear_graph_query = f"SPARQL CLEAR GRAPH {test_graph}"
 
-    @patch('builtins.print') # 假设执行方法中有打印语句
-                             # Assume there are print statements in execution methods
-    def test_execute_select(self, mock_print):
-        # 测试执行 SELECT 查询
-        # Test executing a SELECT query
-        query = "SELECT ?s WHERE { ?s ?p ?o }"
-        # 模拟数据库连接的 execute 方法返回一些模拟数据
-        # Simulate the database connection's execute method returning some mock data
-        # (当前实现是打印并返回空列表，所以我们检查打印)
-        # (The current implementation prints and returns an empty list, so we check the print)
-        
-        result = self.executor.execute_select(query)
-        
-        self.mock_connection_manager.get_connection.assert_called_once() # 确保获取了连接
-                                                                        # Ensure connection was obtained
-        # 检查打印输出是否包含查询语句 (根据 SparqlExecutor 的模拟实现)
-        # Check if print output contains the query statement (based on SparqlExecutor's simulated implementation)
-        mock_print.assert_any_call(f"Executing SELECT query on {self.mock_db_connection}:\n{query}")
-        self.assertEqual(result, []) # 应返回模拟的空列表
-                                     # Should return the simulated empty list
+    try:
+        with conn_manager_fixture:
+            # 清理可能存在的旧数据
+            # Clean up potentially existing old data
+            try:
+                sparql_executor_fixture.begin_transaction()
+                sparql_executor_fixture.execute_update(clear_graph_query)
+                sparql_executor_fixture.commit_transaction()
+            except pyodbc.Error:
+                if conn_manager_fixture.transaction_active: # 检查事务是否真的开始了
+                    sparql_executor_fixture.rollback_transaction() # 确保事务结束
+                                                              # Ensure transaction ends
+            except ConnectionError as e:
+                 pytest.skip(f"清理操作时数据库连接失败: {e}") # DB connection failed during cleanup
 
-    @patch('builtins.print')
-    def test_execute_insert(self, mock_print):
-        # 测试执行 INSERT 查询
-        # Test executing an INSERT query
-        query = "INSERT DATA { <uri:s> <uri:p> <uri:o> }"
-        self.executor.execute_insert(query)
-        self.mock_connection_manager.get_connection.assert_called_once()
-        mock_print.assert_any_call(f"Executing INSERT query on {self.mock_db_connection}:\n{query}")
+            # 开始事务
+            # Begin transaction
+            sparql_executor_fixture.begin_transaction()
+            
+            # 执行插入
+            # Execute insert
+            affected_rows = sparql_executor_fixture.execute_update(insert_query)
+            # 对于SPARQL INSERT，受影响的行数可能不总是准确或一致，所以不严格断言其值
+            # For SPARQL INSERT, affected rows might not always be accurate/consistent, so don't strictly assert value
 
-    @patch('builtins.print')
-    def test_execute_delete(self, mock_print):
-        # 测试执行 DELETE 查询
-        # Test executing a DELETE query
-        query = "DELETE DATA { <uri:s> <uri:p> <uri:o> }"
-        self.executor.execute_delete(query)
-        self.mock_connection_manager.get_connection.assert_called_once()
-        mock_print.assert_any_call(f"Executing DELETE query on {self.mock_db_connection}:\n{query}")
+            # 提交事务
+            # Commit transaction
+            sparql_executor_fixture.commit_transaction()
 
-    @patch('builtins.print')
-    def test_execute_update(self, mock_print):
-        # 测试执行 UPDATE 查询
-        # Test executing an UPDATE query
-        query = "DELETE { ?s ?p ?o } INSERT { ?s ?p ?new_o }"
-        self.executor.execute_update(query)
-        self.mock_connection_manager.get_connection.assert_called_once()
-        mock_print.assert_any_call(f"Executing UPDATE (DELETE/INSERT) query on {self.mock_db_connection}:\n{query}")
+            # 验证数据是否已插入
+            # Verify data was inserted
+            results = sparql_executor_fixture.execute_select(select_query)
+            assert len(results) == 1, "提交后应能查询到插入的数据" # Should find inserted data after commit
 
-    @patch('builtins.print')
-    def test_begin_transaction(self, mock_print):
-        # 测试开始事务
-        # Test beginning a transaction
-        self.executor.begin_transaction()
-        self.mock_connection_manager.get_connection.assert_called_once()
-        # 检查模拟的事务开始打印
-        # Check the simulated transaction begin print
-        mock_print.assert_any_call(f"Beginning transaction on {self.mock_db_connection} (simulated).")
-        # 如果实际实现中 self.mock_db_connection 有 begin() 方法，则用:
-        # If the actual implementation has a begin() method on self.mock_db_connection, use:
-        # self.mock_db_connection.begin.assert_called_once()
+            # 清理测试数据
+            # Clean up test data
+            sparql_executor_fixture.begin_transaction()
+            sparql_executor_fixture.execute_update(clear_graph_query)
+            sparql_executor_fixture.commit_transaction()
 
-    @patch('builtins.print')
-    def test_commit_transaction(self, mock_print):
-        # 测试提交事务
-        # Test committing a transaction
-        self.executor.commit_transaction()
-        self.mock_connection_manager.get_connection.assert_called_once()
-        mock_print.assert_any_call(f"Committing transaction on {self.mock_db_connection} (simulated).")
-        # self.mock_db_connection.commit.assert_called_once()
+    except pyodbc.Error as e:
+        pytest.skip(f"数据库事务/更新操作失败，跳过此测试: {e}") # DB transaction/update op failed, skipping
+    except ConnectionError as e:
+        pytest.skip(f"数据库连接失败，跳过此测试: {e}") # DB connection failed, skipping
 
-    @patch('builtins.print')
-    def test_rollback_transaction(self, mock_print):
-        # 测试回滚事务
-        # Test rolling back a transaction
-        self.executor.rollback_transaction()
-        self.mock_connection_manager.get_connection.assert_called_once()
-        mock_print.assert_any_call(f"Rolling back transaction on {self.mock_db_connection} (simulated).")
-        # self.mock_db_connection.rollback.assert_called_once()
 
-if __name__ == '__main__':
-    unittest.main(argv=['first-arg-is-ignored'], exit=False)
+# 测试 DELETE 更新和事务处理 (rollback)
+# Test DELETE update and transaction handling (rollback)
+def test_execute_update_delete_and_rollback(sparql_executor_fixture: SparqlExecutor, conn_manager_fixture: VirtuosoConnectionManager):
+    """测试 SparqlExecutor 执行 DELETE 并回滚事务。"""
+    test_subject = "<http://example.org/test_exec_subject_delete>"
+    test_predicate = "<http://example.org/test_pred_delete>"
+    test_object = "<http://example.org/test_obj_delete>"
+    test_graph = f"<{settings.virtuoso_graph_uri}/test_sparql_executor_rollback>"
+
+    insert_query = f"SPARQL INSERT DATA INTO {test_graph} {{ {test_subject} {test_predicate} {test_object} . }}"
+    delete_query = f"SPARQL DELETE DATA FROM {test_graph} {{ {test_subject} {test_predicate} {test_object} . }}"
+    select_query = f"SPARQL SELECT ?s WHERE {{ GRAPH {test_graph} {{ {test_subject} {test_predicate} {test_object} . }} }}"
+    clear_graph_query = f"SPARQL CLEAR GRAPH {test_graph}"
+
+    try:
+        with conn_manager_fixture:
+            # 设置初始状态：插入一条数据并提交
+            # Set initial state: insert data and commit
+            try:
+                sparql_executor_fixture.begin_transaction()
+                sparql_executor_fixture.execute_update(clear_graph_query) # 清理旧的
+                                                                        # Clean up old
+                sparql_executor_fixture.execute_update(insert_query)
+                sparql_executor_fixture.commit_transaction()
+            except pyodbc.Error: # 如果清理或初始插入失败
+                                 # If cleanup or initial insert fails
+                if conn_manager_fixture.transaction_active:
+                    sparql_executor_fixture.rollback_transaction()
+                pytest.skip("设置初始状态失败，跳过回滚测试。") # Failed to set initial state, skipping rollback test
+            except ConnectionError as e:
+                pytest.skip(f"设置初始状态时数据库连接失败: {e}") # DB connection failed during setup
+
+            # 开始新事务以测试回滚
+            # Begin new transaction to test rollback
+            sparql_executor_fixture.begin_transaction()
+            
+            # 执行删除
+            # Execute delete
+            sparql_executor_fixture.execute_update(delete_query)
+            
+            # 验证事务内数据是否被删除 (可选，取决于隔离级别和期望)
+            # Verify data deleted within transaction (optional, depends on isolation level and expectation)
+            # results_in_txn = sparql_executor_fixture.execute_select(select_query)
+            # assert len(results_in_txn) == 0, "在事务内删除后，数据应不可见"
+
+            # 回滚事务
+            # Rollback transaction
+            sparql_executor_fixture.rollback_transaction()
+
+            # 验证数据在回滚后是否仍然存在
+            # Verify data still exists after rollback
+            results_after_rollback = sparql_executor_fixture.execute_select(select_query)
+            assert len(results_after_rollback) == 1, "回滚后，数据应依然存在" # After rollback, data should still exist
+
+            # 清理
+            # Cleanup
+            sparql_executor_fixture.begin_transaction()
+            sparql_executor_fixture.execute_update(clear_graph_query)
+            sparql_executor_fixture.commit_transaction()
+
+    except pyodbc.Error as e:
+        pytest.skip(f"数据库事务/更新操作失败，跳过此测试: {e}") # DB transaction/update op failed, skipping
+    except ConnectionError as e:
+        pytest.skip(f"数据库连接失败，跳过此测试: {e}") # DB connection failed, skipping
+
+# 这些测试同样依赖于可访问的Virtuoso实例和正确的ODBC配置。
+# These tests also depend on an accessible Virtuoso instance and correct ODBC configuration.

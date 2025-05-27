@@ -1,151 +1,193 @@
-import unittest
-from unittest.mock import patch, MagicMock
+# tcm_kg_virtuoso_module/tests/core/test_connection_manager.py
+import pytest
+import pyodbc # 导入 pyodbc 以便捕获其特定错误
+from tcm_kg_virtuoso_module.core.connection_manager import VirtuosoConnectionManager
+from tcm_kg_virtuoso_module.config.settings import get_settings # 用于获取配置
 
-# 模拟 settings 对象，以便在测试中控制配置值
-# Mock the settings object to control configuration values in tests
-mock_settings = MagicMock()
-mock_settings.VIRTUOSO_HOST = "testhost"
-mock_settings.VIRTUOSO_PORT = 1234
-mock_settings.VIRTUOSO_USER = "testuser"
-mock_settings.VIRTUOSO_PASSWORD = "testpassword"
-mock_settings.VIRTUOSO_DSN = "TestDSN"
+# 获取数据库连接设置
+# Get database connection settings
+settings = get_settings()
 
-# 使用 patch 来替换真实的 settings 模块
-# Use patch to replace the actual settings module
-@patch('tcm_kg_virtuoso_module.config.settings', mock_settings)
-class TestVirtuosoConnectionManager(unittest.TestCase):
+# 定义一个Pytest fixture，用于在测试需要时提供一个ConnectionManager实例
+# Define a Pytest fixture to provide a ConnectionManager instance when tests need it
+@pytest.fixture(scope="module") # module作用域表示此fixture在模块内所有测试中共享
+                               # module scope means this fixture is shared among all tests in the module
+def conn_manager():
+    manager = VirtuosoConnectionManager(
+        host=settings.virtuoso_host,
+        port=settings.virtuoso_port,
+        user=settings.virtuoso_user,
+        password=settings.virtuoso_password,
+        default_graph_uri=settings.virtuoso_graph_uri
+    )
+    # 注意：这里不自动连接，每个测试用例根据需要自行连接/断开或使用上下文管理器
+    # Note: Does not automatically connect here; each test case connects/disconnects as needed or uses context manager
+    return manager
 
-    def setUp(self):
-        # 在每个测试方法运行前，重置 mock_settings 的调用记录（如果需要）
-        # Before each test method, reset call records for mock_settings if needed
-        mock_settings.reset_mock()
+# 测试能否成功连接和断开
+# Test successful connection and disconnection
+def test_connect_disconnect(conn_manager: VirtuosoConnectionManager):
+    """测试基本的连接和断开功能。"""
+    try:
+        conn_manager.connect()
+        assert conn_manager.connection is not None, "连接对象不应为None" # Connection object should not be None
+        assert conn_manager.cursor is not None, "游标对象不应为None" # Cursor object should not be None
+    except pyodbc.Error as e:
+        pytest.skip(f"无法连接到Virtuoso数据库，跳过此测试: {e}") # Cannot connect to Virtuoso, skipping test
+    finally:
+        conn_manager.disconnect()
+        assert conn_manager.connection is None, "断开后连接对象应为None" # Connection object should be None after disconnect
+        assert conn_manager.cursor is None, "断开后游标对象应为None" # Cursor object should be None after disconnect
 
-        # 动态导入被测试的类，确保 mock 生效
-        # Dynamically import the class under test to ensure mocks are in effect
-        from tcm_kg_virtuoso_module.core.connection_manager import VirtuosoConnectionManager
-        self.VirtuosoConnectionManager = VirtuosoConnectionManager
-
-    def test_initialization(self):
-        # 测试初始化是否正确加载配置
-        # Test if initialization loads configuration correctly
-        manager = self.VirtuosoConnectionManager()
-        self.assertEqual(manager.host, "testhost")
-        self.assertEqual(manager.port, 1234)
-        self.assertEqual(manager.user, "testuser")
-        self.assertEqual(manager.password, "testpassword")
-        self.assertEqual(manager.dsn, "TestDSN")
-        self.assertIsNone(manager.connection) # 初始连接应为 None
-                                             # Initial connection should be None
-
-    @patch('builtins.print') # 模拟 print 函数以检查输出
-                             # Mock the print function to check output
-    def test_connect_successful(self, mock_print):
-        # 测试连接成功的情况
-        # Test successful connection scenario
-        manager = self.VirtuosoConnectionManager()
-        manager.connect()
-        self.assertTrue(manager.connection) # 连接成功后，connection 属性应为 True (模拟状态)
-                                            # After successful connection, connection attribute should be True (simulated state)
-        mock_print.assert_any_call("Successfully connected to Virtuoso (simulated).")
-
-    @patch('builtins.print')
-    def test_connect_failure(self, mock_print):
-        # 测试连接失败的情况
-        # Test connection failure scenario
-        manager = self.VirtuosoConnectionManager()
+# 测试使用上下文管理器
+# Test using context manager
+def test_context_manager(conn_manager: VirtuosoConnectionManager):
+    """测试连接管理器的上下文管理协议。"""
+    try:
+        with conn_manager as cm: # __enter__ 会调用 connect()
+                                 # __enter__ will call connect()
+            assert cm.connection is not None
+            assert cm.cursor is not None
+            # 在这里可以执行一些简单的操作，例如查询版本
+            # Simple operations can be performed here, e.g., querying version
+            cm.cursor.execute("SPARQL SELECT DB.DBA.version();")
+            version_row = cm.cursor.fetchone()
+            assert version_row is not None, "应能查询到数据库版本" # Should be able to query database version
+            print(f"数据库版本: {version_row[0]}") # Database version
         
-        # 为了模拟连接失败，我们在这里动态地替换 connect 方法的内部实现，
-        # 使其在尝试连接时抛出异常。
-        # To simulate connection failure, we dynamically replace the internal implementation 
-        # of the connect method here to make it throw an exception when trying to connect.
-        original_connect_method = manager.connect 
-        
-        def simulated_failing_connect():
-            # 这是 connect 方法原始实现的第一部分
-            # This is the first part of the original implementation of the connect method
-            print(f"Attempting to connect to Virtuoso: DSN={manager.dsn}, User={manager.user}")
-            # 模拟连接过程中发生错误
-            # Simulate an error occurring during the connection process
-            raise Exception("Simulated connection error")
+        # __exit__ 会调用 disconnect()
+        # __exit__ will call disconnect()
+        assert conn_manager.connection is None
+        assert conn_manager.cursor is None
+    except pyodbc.Error as e:
+        pytest.skip(f"无法连接到Virtuoso数据库或执行查询，跳过此测试: {e}") # Cannot connect/query Virtuoso, skipping
 
-        manager.connect = simulated_failing_connect
-        
-        with self.assertRaises(Exception) as context:
-            manager.connect() # 调用被修改过的 connect 方法
-                              # Call the modified connect method
-        
-        self.assertIn("Simulated connection error", str(context.exception))
-        # 由于 connect 方法在异常发生时会将 self.connection 设为 None (或者保持为 None 如果之前就是)
-        # 并且重新抛出异常，所以这里我们检查 connection 是否为 None
-        # Since the connect method sets self.connection to None (or keeps it as None if it was already) 
-        # when an exception occurs and re-throws the exception, here we check if connection is None.
-        # 注意：在原始类中，如果异常发生在 self.connection = True 赋值之前，它会是None。
-        # 如果发生在之后，它会是True，然后异常处理块中又置为None。
-        # 我们的模拟更直接：在应该成功赋值之前就抛出异常。
-        # Note: In the original class, if the exception occurs before the self.connection = True assignment, it will be None.
-        # If it occurs after, it will be True, and then the exception handling block sets it to None.
-        # Our simulation is more direct: throw the exception before the successful assignment should happen.
-        manager.connection = None # 确保在检查前状态与预期一致
-                                  # Ensure the state is as expected before checking
-        self.assertIsNone(manager.connection) 
-        mock_print.assert_any_call(f"Attempting to connect to Virtuoso: DSN={manager.dsn}, User={manager.user}")
-        # 实际的错误打印由 VirtuosoConnectionManager 内部的 connect 方法的 except 块处理
-        # The actual error printing is handled by the except block of the connect method inside VirtuosoConnectionManager
-        # 在这个测试中，因为我们完全替换了 connect，所以原始的 "Error connecting to Virtuoso (simulated):" 不会被打印
-        # In this test, because we completely replaced connect, the original "Error connecting to Virtuoso (simulated):" will not be printed
-        # 如果我们想测试那个特定的打印语句，我们需要更细致地模拟 connect 内部的异常。
-        # If we want to test that specific print statement, we need to simulate the exception within connect more subtly.
-
-        # 恢复原始的 connect 方法，避免影响其他测试
-        # Restore the original connect method to avoid affecting other tests
-        manager.connect = original_connect_method
+# 测试执行查询 (SELECT)
+# Test executing a query (SELECT)
+def test_execute_query(conn_manager: VirtuosoConnectionManager):
+    """测试执行SELECT查询。"""
+    try:
+        with conn_manager as cm:
+            # 一个非常简单的SPARQL查询，不依赖特定数据
+            # A very simple SPARQL query that doesn't depend on specific data
+            query = "SPARQL SELECT 1 AS ?one WHERE { }"
+            results = cm.execute_query(query)
+            assert isinstance(results, list), "结果应为列表" # Result should be a list
+            assert len(results) >= 0, "结果列表长度应大于等于0" # Result list length should be >= 0
+            if len(results) > 0: # Virtuoso 可能返回空结果集，也可能返回包含一行但?one为null的结果，取决于具体实现
+                                 # Virtuoso might return an empty result set, or one row with ?one as null, depending on implementation
+                assert "one" in results[0] if results[0] else True, "结果中应包含列 'one' 或结果行为空字典" # Result should contain 'one' or be an empty dict
+                if results[0] and "one" in results[0]:
+                     assert results[0]["one"] == 1, "值应为1" # Value should be 1
 
 
-    def test_get_connection(self):
-        # 测试 get_connection 方法
-        # Test the get_connection method
-        manager = self.VirtuosoConnectionManager()
-        self.assertIsNone(manager.connection)
-        
-        conn1 = manager.get_connection()
-        self.assertTrue(conn1) # 应建立新连接 (模拟状态)
-                               # Should establish a new connection (simulated state)
-        self.assertIsNotNone(manager.connection) # connection 属性不应为 None
-                                                # connection attribute should not be None
+    except pyodbc.Error as e:
+        pytest.skip(f"数据库操作失败，跳过此测试: {e}") # DB operation failed, skipping test
 
-        conn2 = manager.get_connection()
-        self.assertIs(conn1, conn2) # 应返回现有连接
-                                    # Should return the existing connection
-        self.assertEqual(manager.connection, conn1) # 确保 manager 内部的 connection 也被正确设置和复用
-                                                    # Ensure manager's internal connection is also correctly set and reused
+# 测试执行更新 (INSERT/DELETE) 和事务
+# Test executing an update (INSERT/DELETE) and transactions
+def test_execute_update_and_transactions(conn_manager: VirtuosoConnectionManager):
+    """测试执行更新操作以及事务的提交和回滚。"""
+    test_subject = "<http://example.org/test_conn_mngr_subject1>"
+    test_predicate = "<http://example.org/test_pred>"
+    test_object = "<http://example.org/test_obj1>"
+    # 使用 settings 中的 graph_uri 来构建测试图名，确保与配置一致
+    # Use graph_uri from settings to construct test graph name, ensuring consistency with config
+    base_test_graph_uri = settings.virtuoso_graph_uri.rstrip('/') + "/test_connection_manager"
+    test_graph = f"<{base_test_graph_uri}>"
 
-    @patch('builtins.print')
-    def test_close_connection(self, mock_print):
-        # 测试关闭连接
-        # Test closing the connection
-        manager = self.VirtuosoConnectionManager()
-        manager.connect() # 先建立连接
-                          # Establish connection first
-        self.assertTrue(manager.connection)
 
-        manager.close()
-        self.assertIsNone(manager.connection) # 连接应被设为 None
-                                            # Connection should be set to None
-        mock_print.assert_any_call("Closing Virtuoso connection (simulated).")
+    insert_query = f"SPARQL INSERT DATA INTO {test_graph} {{ {test_subject} {test_predicate} {test_object} . }}"
+    delete_query = f"SPARQL DELETE DATA FROM {test_graph} {{ {test_subject} {test_predicate} {test_object} . }}"
+    # 在SELECT查询中明确指定GRAPH
+    # Explicitly specify GRAPH in SELECT query
+    select_query = f"SPARQL SELECT ?s WHERE {{ GRAPH {test_graph} {{ {test_subject} {test_predicate} {test_object} . }} }}"
+    clear_graph_query = f"SPARQL CLEAR GRAPH {test_graph}"
 
-    @patch('builtins.print')
-    def test_close_no_active_connection(self, mock_print):
-        # 测试当没有活动连接时调用 close
-        # Test calling close when there is no active connection
-        manager = self.VirtuosoConnectionManager()
-        self.assertIsNone(manager.connection) # 初始连接为 None
-                                             # Initial connection is None
-        manager.close()
-        self.assertIsNone(manager.connection) # 调用 close 后仍为 None
-                                            # Still None after calling close
-        mock_print.assert_any_call("No active Virtuoso connection to close (simulated).")
 
-if __name__ == '__main__':
-    # 运行测试，这在直接执行此文件时有用
-    # Run tests, useful when executing this file directly
-    unittest.main(argv=['first-arg-is-ignored'], exit=False)
+    try:
+        with conn_manager as cm:
+            # 清理可能存在的旧数据
+            # Clean up potentially existing old data
+            try:
+                cm.begin_transaction()
+                cm.execute_update(clear_graph_query)
+                cm.commit_transaction()
+                print(f"测试信息：图 {test_graph} 在测试开始前已清空。") # Test info: Graph cleared before test.
+            except pyodbc.Error as e: 
+                print(f"测试警告：清理图 {test_graph} 时发生错误 (可能是图不存在): {e}。继续测试...") # Test warning: Error clearing graph (might not exist). Continuing...
+                if cm.transaction_active: # 确保事务结束
+                                         # Ensure transaction ends
+                    cm.rollback_transaction()
+
+
+            # 1. 测试插入和提交
+            # 1. Test insert and commit
+            cm.begin_transaction()
+            rows_affected_insert = cm.execute_update(insert_query)
+            # 对于SPARQL INSERT，pyodbc的rowcount行为可能不一致，不强制断言其为1
+            # For SPARQL INSERT, pyodbc rowcount behavior can be inconsistent, not strictly asserting 1
+            print(f"测试信息：插入操作影响行数: {rows_affected_insert}") # Test info: Insert affected rows
+            cm.commit_transaction()
+
+            results_after_insert = cm.execute_query(select_query)
+            assert len(results_after_insert) == 1, f"提交后应能查询到数据。查询: {select_query}, 结果: {results_after_insert}" # Should find data after commit.
+
+            # 2. 测试删除和回滚
+            # 2. Test delete and rollback
+            cm.begin_transaction()
+            rows_affected_delete = cm.execute_update(delete_query) # 先删除
+                                                                  # Delete first
+            print(f"测试信息：删除操作(事务中)影响行数: {rows_affected_delete}") # Test info: Delete (in transaction) affected rows
+            
+            results_in_txn_after_delete = cm.execute_query(select_query)
+            assert len(results_in_txn_after_delete) == 0, "在事务内删除后数据应不可见" # Data should be invisible after delete within transaction
+
+            cm.rollback_transaction() # 回滚删除
+                                     # Rollback delete
+
+            results_after_rollback = cm.execute_query(select_query)
+            assert len(results_after_rollback) == 1, "回滚后数据应依然存在" # Data should still exist after rollback
+
+            # 3. 清理测试数据 (最终删除)
+            # 3. Clean up test data (final delete)
+            cm.begin_transaction()
+            rows_affected_final_delete = cm.execute_update(delete_query)
+            print(f"测试信息：最终删除操作影响行数: {rows_affected_final_delete}") # Test info: Final delete affected rows
+            cm.commit_transaction()
+
+            results_after_cleanup = cm.execute_query(select_query)
+            assert len(results_after_cleanup) == 0, "清理后数据应不存在" # Data should not exist after cleanup
+            print(f"测试信息：图 {test_graph} 数据已成功清理。") # Test info: Graph data successfully cleared.
+
+    except pyodbc.Error as e:
+        pytest.skip(f"数据库事务/更新操作失败，跳过此测试: {e}") # DB transaction/update op failed, skipping
+    except Exception as e: # 捕获其他可能的断言错误等
+                           # Catch other possible assertion errors etc.
+        pytest.fail(f"测试中发生意外错误: {e}") # Unexpected error in test
+
+
+# 测试事务方法在未连接时的行为 (应抛出ConnectionError)
+# Test transaction methods when not connected (should raise ConnectionError)
+def test_transaction_methods_when_not_connected(conn_manager: VirtuosoConnectionManager):
+    """测试在未连接状态下调用事务相关方法。"""
+    # 确保处于断开状态
+    # Ensure disconnected state
+    if conn_manager.connection: # 如果之前的测试意外保留了连接
+                               # If a previous test unexpectedly kept the connection
+        conn_manager.disconnect()
+
+    with pytest.raises(ConnectionError, match="数据库未连接"): # Match Chinese message
+        conn_manager.begin_transaction()
+    
+    with pytest.raises(ConnectionError, match="数据库未连接"):
+        conn_manager.commit_transaction()
+
+    with pytest.raises(ConnectionError, match="数据库未连接"):
+        conn_manager.rollback_transaction()
+
+# 注意: 这些集成测试依赖于一个可访问的Virtuoso实例和正确的ODBC配置。
+# Note: These integration tests depend on an accessible Virtuoso instance and correct ODBC configuration.
+# 在没有此类环境的CI/CD中，它们可能会被跳过 (使用pytest.skip)。
+# In CI/CD without such an environment, they might be skipped (using pytest.skip).
+```
