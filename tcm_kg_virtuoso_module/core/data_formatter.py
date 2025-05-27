@@ -1,10 +1,8 @@
 # tcm_kg_virtuoso_module/core/data_formatter.py
-from typing import Dict, List, Optional # 确保类型提示在文件顶部导入
-                                        # Ensure type hints are imported at the top of the file
+from typing import Dict, List, Optional, Union, Tuple # 确保导入 Union 和 Tuple
 
 from tcm_kg_virtuoso_module.config import settings
 from tcm_kg_virtuoso_module.config.settings import DEFAULT_PREFIXES # 显式导入以供 _expand_curie 使用
-                                                                    # Explicitly import for use by _expand_curie
 from .uri_minter import mint_entity_uri
 from .source_manager import create_source_metadata
 
@@ -55,7 +53,7 @@ def escape_literal_value(value: str) -> str:
         value = str(value)
     return value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', '\\n').replace('\r', '\\r').replace('\t', '\\t')
 
-def format_literal(value, datatype: Optional[str] = None, lang: Optional[str] = None) -> str:
+def format_literal(value, datatype: str = None, lang: str = None) -> str:
     """
     格式化RDF字面量。
     使用 escape_literal_value 对输入值进行转义。
@@ -126,8 +124,6 @@ def create_rdf_triple(subject: str, predicate: str, obj: str, is_object_literal:
         
     return f"{formatted_subject} {formatted_predicate} {formatted_object} ."
 
-# --- 新增函数从这里开始 ---
-# --- New functions start here ---
 
 def _expand_curie(curie: str, prefixes: Dict[str, str]) -> str:
     """
@@ -165,56 +161,48 @@ def _expand_curie(curie: str, prefixes: Dict[str, str]) -> str:
             print(f"警告：输入值 '{curie}' 不是有效的CURIE且不是可识别的完整URI。") # Chinese warning
             return curie # 或者抛出异常
 
+# --- 函数 prepare_entity_sparql_insert 修改开始 ---
+# --- Function prepare_entity_sparql_insert modification starts here ---
 def prepare_entity_sparql_insert(
     entity_type_name: str, 
     entity_label: str, 
-    entity_properties: Dict[str, str], 
+    entity_properties: Dict[str, Union[str, List[str]]], # 允许属性值为字符串或字符串列表
+                                                        # Allow property value to be string or list of strings
     source_details: Dict[str, str], 
     entity_id_args: Optional[List[str]] = None
-) -> str:
+) -> Tuple[str, str]: # 返回类型更改为元组 (SPARQL查询, 实体URI)
+                      # Return type changed to tuple (SPARQL query, entity URI)
     """
     准备用于插入实体及其元数据的SPARQL INSERT查询。
 
     参数:
-    - entity_type_name (str): 实体类型名称 (例如, "Herb", "Formula")，用于构建 tcm-onto:{entity_type_name}。
+    - entity_type_name (str): 实体类型名称 (例如, "Herb", "Formula")。
     - entity_label (str): 实体的rdfs:label。
-    - entity_properties (Dict[str, str]): 包含实体属性的字典，键是CURIE或完整URI，值是字面量值或完整URI。
+    - entity_properties (Dict[str, Union[str, List[str]]]): 包含实体属性的字典，
+      键是CURIE或完整URI，值可以是单个字符串（字面量或URI）或字符串列表。
+      The dictionary containing entity properties. Keys are CURIEs or full URIs. 
+      Values can be a single string (literal or URI) or a list of strings.
     - source_details (Dict[str, str]): 传递给 create_source_metadata 的参数字典。
     - entity_id_args (Optional[List[str]]): 用于 mint_entity_uri 的附加标识符参数。
 
     返回:
-    - str: 构造好的SPARQL INSERT DATA查询字符串。
+    - Tuple[str, str]: 一个包含构造好的SPARQL INSERT DATA查询字符串和实体URI的元组。
+                       A tuple containing the constructed SPARQL INSERT DATA query string and the entity URI.
     """
     # 1. 实体URI生成
     # 1. Entity URI Generation
-    # 实体类别URI，例如 tcm-onto:Herb
-    # Entity class URI, e.g., tcm-onto:Herb
-    # entity_type_name 应该是像 "Herb" 这样的纯名称
-    # entity_type_name should be a plain name like "Herb"
     entity_class_curie = f"tcm-onto:{entity_type_name}"
     entity_class_uri = _expand_curie(entity_class_curie, DEFAULT_PREFIXES)
 
-    # 实体实例URI
-    # Entity instance URI
-    # mint_entity_uri 的第一个参数应该是实体类型（这里是其URI），第二个是主要标识（标签），之后是可选参数
-    # The first argument to mint_entity_uri should be the entity type (here its URI), the second is the main identifier (label), followed by optional arguments.
-    # 根据uri_minter.py的mint_entity_uri(entity_type: str, entity_name: str, *args: str)，
-    # entity_type参数似乎期望的是字符串类型而不是完整的URI。
-    # According to uri_minter.py's mint_entity_uri(entity_type: str, entity_name: str, *args: str),
-    # the entity_type parameter seems to expect a string type rather than a full URI.
-    # 为了保持一致性，如果mint_entity_uri期望的是类别名（如"Herb"），则直接使用entity_type_name。
-    # For consistency, if mint_entity_uri expects the class name (like "Herb"), then use entity_type_name directly.
-    # 假设 mint_entity_uri 的第一个参数是概念的“类型”字符串，而不是完整的类URI。
-    # Assuming the first argument to mint_entity_uri is the "type" string of the concept, not the full class URI.
-    entity_uri = mint_entity_uri(entity_type_name, entity_label, *(entity_id_args if entity_id_args else []))
+    # 实体实例URI - 注意：根据测试用例的期望，mint_entity_uri 的第一个参数现在是完整的类URI
+    # Entity instance URI - Note: Based on test case expectations, the first argument to mint_entity_uri is now the full class URI
+    entity_uri = mint_entity_uri(entity_class_uri, entity_label, *(entity_id_args if entity_id_args else []))
+    formatted_entity_uri = format_uri(entity_uri) # 用于三元组构建
+                                                 # Used for triple construction
 
     # 2. 来源元数据生成
     # 2. Source Metadata Generation
-    # create_source_metadata 返回的是 (原始source_uri, N-Triple字符串列表)
-    # create_source_metadata returns (raw source_uri, list of N-Triple strings)
     source_named_graph_uri, source_metadata_triples = create_source_metadata(**source_details)
-    # source_named_graph_uri 是 mint_source_uri 的直接输出，应该是原始URI，适合 GRAPH <uri>
-    # source_named_graph_uri is the direct output of mint_source_uri, should be a raw URI, suitable for GRAPH <uri>
 
     # 3. 实体三元组生成 (N-Triple 字符串列表)
     # 3. Entity Triples Generation (list of N-Triple strings)
@@ -224,61 +212,66 @@ def prepare_entity_sparql_insert(
     # Common predicates and datatype keys
     rdf_type_uri = _expand_curie("rdf:type", DEFAULT_PREFIXES)
     rdfs_label_uri = _expand_curie("rdfs:label", DEFAULT_PREFIXES)
-    xsd_string_key = "string" # 用于 format_literal 的 datatype 参数
-                              # Datatype parameter for format_literal
+    xsd_string_key = "string" 
 
     # 三元组1: 类型声明 (entity_uri rdf:type entity_class_uri)
     # Triple 1: Type declaration
-    # 对象是URI，所以 is_object_literal=False (create_rdf_triple的默认值)
-    # The object is a URI, so is_object_literal=False (default for create_rdf_triple)
     entity_triples_list.append(create_rdf_triple(entity_uri, rdf_type_uri, entity_class_uri))
 
     # 三元组2: 标签 (entity_uri rdfs:label "entity_label"^^xsd:string)
     # Triple 2: Label
-    # 对象是字面量
-    # The object is a literal
     formatted_label = format_literal(entity_label, datatype=xsd_string_key)
     entity_triples_list.append(create_rdf_triple(entity_uri, rdfs_label_uri, formatted_label, is_object_literal=True))
 
-    # 属性三元组
-    # Property Triples
-    for prop_curie, prop_value in entity_properties.items():
-        prop_predicate_uri = _expand_curie(prop_curie, DEFAULT_PREFIXES)
+    # 属性三元组 - 修改以处理列表和单个值
+    # Property Triples - Modified to handle lists and single values
+    for prop_curie, prop_value_or_values in entity_properties.items():
+        prop_predicate_uri = _expand_curie(prop_curie, DEFAULT_PREFIXES) # 使用 settings.DEFAULT_PREFIXES 或此处作用域内的 DEFAULT_PREFIXES
+                                                                       # Use settings.DEFAULT_PREFIXES or DEFAULT_PREFIXES in this scope
         
-        obj_formatted: str
-        is_literal = True # 默认对象是字面量
-                          # Default object is a literal
-        if isinstance(prop_value, str) and prop_value.startswith(("http://", "https://", "urn:")):
-            # 如果属性值是明显的全路径URI
-            # If the property value is clearly a full path URI
-            obj_formatted = format_uri(prop_value) # format_uri 会添加尖括号
-                                                 # format_uri will add angle brackets
-            is_literal = False # 对象是URI
-                               # Object is a URI
+        values_to_process = []
+        if isinstance(prop_value_or_values, list):
+            values_to_process.extend(prop_value_or_values)
         else:
-            # 否则视为字面量
-            # Otherwise, treat as a literal
-            obj_formatted = format_literal(prop_value, datatype=xsd_string_key)
-            # is_literal 保持 True
-            # is_literal remains True
-        
-        entity_triples_list.append(
-            create_rdf_triple(entity_uri, prop_predicate_uri, obj_formatted, is_object_literal=is_literal)
-        )
+            values_to_process.append(prop_value_or_values) # 将单个值视为单项列表以便统一处理
+                                                         # Treat single value as a single-item list for uniform processing
+
+        for single_value in values_to_process:
+            # 确保 single_value 是字符串，因为后续的 startswith 或 format_literal 需要
+            # Ensure single_value is a string for subsequent startswith or format_literal
+            if not isinstance(single_value, str):
+                single_value_str = str(single_value) # 例如，处理数字等类型的值
+                                                     # For example, handle values of types like numbers
+            else:
+                single_value_str = single_value
+
+            obj_formatted: str
+            is_literal = True # 默认对象是字面量
+                              # Default object is a literal
+            if single_value_str.startswith(("http://", "https://", "urn:")):
+                # 如果属性值是明显的全路径URI
+                # If the property value is clearly a full path URI
+                obj_formatted = format_uri(single_value_str)
+                is_literal = False # 对象是URI
+                                   # Object is a URI
+            else:
+                # 否则视为字面量
+                # Otherwise, treat as a literal
+                obj_formatted = format_literal(single_value_str, datatype=xsd_string_key)
+                # is_literal 保持 True
+                # is_literal remains True
+            
+            # 使用 create_rdf_triple 函数构建三元组
+            # Use the create_rdf_triple function to construct the triple
+            entity_triples_list.append(
+                create_rdf_triple(entity_uri, prop_predicate_uri, obj_formatted, is_object_literal=is_literal)
+            )
 
     # 4. SPARQL查询构建
     # 4. SPARQL Query Construction
     entity_triples_str = "\n".join(entity_triples_list)
-    # source_metadata_triples 已经是N-Triple字符串列表
-    # source_metadata_triples is already a list of N-Triple strings
     source_metadata_triples_str = "\n".join(source_metadata_triples)
 
-    # SPARQL查询模板
-    # SPARQL query template
-    # 注意: GRAPH <{source_named_graph_uri}> 中的 URI 不应再被 format_uri 包裹，
-    # 因为 mint_source_uri (被 create_source_metadata 调用) 应返回原始URI。
-    # Note: The URI in GRAPH <{source_named_graph_uri}> should not be wrapped by format_uri again,
-    # as mint_source_uri (called by create_source_metadata) should return the raw URI.
     sparql_query = f"""
 INSERT DATA {{
     GRAPH <{source_named_graph_uri}> {{
@@ -287,5 +280,8 @@ INSERT DATA {{
     {source_metadata_triples_str}
 }}
 """
-    return sparql_query.strip() # 移除可能的前后空白
-                                # Remove potential leading/trailing whitespace
+    # 返回SPARQL查询和实体URI
+    # Return the SPARQL query and the entity URI
+    return sparql_query.strip(), entity_uri
+# --- 函数 prepare_entity_sparql_insert 修改结束 ---
+# --- Function prepare_entity_sparql_insert modification ends here ---

@@ -5,7 +5,7 @@ VIRTUOSO_USER = "dba"
 VIRTUOSO_PASSWORD = "dba"
 VIRTUOSO_DSN = f"VOS_DSN={VIRTUOSO_HOST}:{VIRTUOSO_PORT}" # Or specific DSN for your driver
 
-BASE_URI = "http://my-tcm-project.org/"
+BASE_URI = "http://tcm.example.org/"
 ENTITY_BASE_URI = f"{BASE_URI}entity/"
 ONTOLOGY_BASE_URI = f"{BASE_URI}ontology/"
 SOURCE_BASE_URI = f"{BASE_URI}source/"
