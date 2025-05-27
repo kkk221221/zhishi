@@ -15,7 +15,7 @@ import json
 
 from src.llm_center.llm_interface import LLMInterface
 from src.data_layer.data_processing.utils import read_text_file, write_text_file, ensure_directory_exists, clean_filename
-from src.data_layer.data_processing.prompts.tcm_prompts import SEMANTIC_MICRO_PARAGRAPH_SPLIT_TEMPLATE
+from src.data_layer.data_processing.prompts.tcm_prompts import SEMANTIC_MICRO_PARAGRAPH_SPLIT_TEMPLATE, IDENTIFY_AUTHOR_FROM_TITLE_TEMPLATE
 
 RAW_TCM_BOOKS_DIR = "src/data_layer/data/raw/TCM_traditional_book"
 PROCESSED_TCM_BOOKS_DIR = "src/data_layer/data/processed/TCM_traditional_book"
