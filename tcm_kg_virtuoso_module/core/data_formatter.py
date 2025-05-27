@@ -4,6 +4,7 @@ from typing import Dict, List, Optional, Union, Tuple # 确保导入 Union 和 T
 from tcm_kg_virtuoso_module.config import settings
 from tcm_kg_virtuoso_module.config.settings import DEFAULT_PREFIXES # 显式导入以供 _expand_curie 使用
 from .uri_minter import mint_entity_uri
+from .source_manager import create_source_metadata # 步骤1：导入 create_source_metadata
 
 
 
@@ -287,3 +288,58 @@ INSERT DATA {{
     return sparql_query.strip(), entity_uri
 # --- 函数 prepare_entity_sparql_insert 修改结束 ---
 # --- Function prepare_entity_sparql_insert modification ends here ---
+
+def prepare_relationship_sparql_insert(subject_uri: str, predicate_curie: str, object_uri: str, source_details: Dict[str, str]) -> str:
+    """
+    准备用于插入关系及其元数据的SPARQL INSERT查询。
+
+    参数:
+    - subject_uri (str): 主语的完整URI。
+    - predicate_curie (str): 谓词的CURIE (例如, "tcm-onto:hasSymptom")。
+    - object_uri (str): 宾语的完整URI。
+    - source_details (Dict[str, str]): 传递给 create_source_metadata 的参数字典。
+
+    返回:
+    - str: 构造好的SPARQL INSERT DATA查询字符串。
+    """
+    # 步骤2: 调用 create_source_metadata 获取来源图URI和来源元数据三元组
+    # Step 2: Call create_source_metadata to get the source graph URI and source metadata triples
+    source_named_graph_uri, source_metadata_triples = create_source_metadata(**source_details)
+
+    # 步骤3: 展开谓词CURIE为完整URI
+    # Step 3: Expand the predicate CURIE to a full URI
+    # 注意：根据要求，tcm-ontology 对应 DEFAULT_PREFIXES 中的 tcm-onto
+    # Note: According to requirements, tcm-ontology corresponds to tcm-onto in DEFAULT_PREFIXES
+    expanded_predicate_uri = _expand_curie(predicate_curie, DEFAULT_PREFIXES)
+
+    # 步骤4: 格式化主语、谓词和宾语URI
+    # Step 4: Format the subject, predicate, and object URIs
+    formatted_subject_uri = format_uri(subject_uri)
+    # _expand_curie 可能返回的已经是完整 URI，但为了确保尖括号，再次使用 format_uri
+    # _expand_curie might already return a full URI, but use format_uri again to ensure angle brackets
+    formatted_predicate_uri = format_uri(expanded_predicate_uri) 
+    formatted_object_uri = format_uri(object_uri)
+
+    # 步骤5: 创建关系三元组字符串
+    # Step 5: Create the relationship triple string
+    # 格式: {formatted_subject_uri} <{expanded_predicate_uri}> {formatted_object_uri} .
+    # The format_uri function already adds angle brackets, so no need to add them again for expanded_predicate_uri here.
+    # However, the problem description implies the predicate in the triple should be <expanded_predicate_uri>,
+    # so we use formatted_predicate_uri which is <expanded_predicate_uri>
+    relationship_triple_string = f"{formatted_subject_uri} {formatted_predicate_uri} {formatted_object_uri} ."
+
+    # 步骤6: 构建SPARQL INSERT DATA查询
+    # Step 6: Construct the SPARQL INSERT DATA query
+    all_source_metadata_triples_string = "\n".join(source_metadata_triples)
+
+    sparql_query = f"""
+INSERT DATA {{
+    GRAPH <{source_named_graph_uri}> {{
+        {relationship_triple_string}
+    }}
+    {all_source_metadata_triples_string}
+}}
+"""
+    # 步骤7: 返回完整的SPARQL查询字符串
+    # Step 7: Return the complete SPARQL query string
+    return sparql_query.strip()

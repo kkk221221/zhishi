@@ -10,7 +10,8 @@ from tcm_kg_virtuoso_module.core.data_formatter import (
     create_rdf_triple,
     _expand_curie, 
     prepare_entity_sparql_insert,
-    COMMON_DATATYPES 
+    prepare_relationship_sparql_insert, # 导入 prepare_relationship_sparql_insert
+    COMMON_DATATYPES
 )
 from tcm_kg_virtuoso_module.config import settings # 用于访问真实的 DEFAULT_PREFIXES
 
@@ -259,6 +260,100 @@ class TestDataFormatter(unittest.TestCase):
     # More test cases can be added, e.g., no properties, no entity_id_args, etc.
     # The test_prepare_entity_sparql_insert_no_properties_no_id_args from the previous version
     # can be adapted similarly.
+
+    @patch('tcm_kg_virtuoso_module.core.data_formatter.create_source_metadata') # Patch where it's used
+    def test_prepare_relationship_sparql_insert(self, mock_create_source_metadata):
+        # 测试 prepare_relationship_sparql_insert 函数
+        # Test the prepare_relationship_sparql_insert function
+
+        # 1. 配置 Mocks 的返回值
+        # 1. Configure mock return values
+        mock_source_graph_uri = "http://example.com/graph/sourceRel123"
+        # 使用实际的前缀和 format_literal 来创建更真实的元数据三元组
+        # Use actual prefixes and format_literal to create more realistic metadata triples
+        real_dcterms_citation = _expand_curie("dcterms:bibliographicCitation", mock_DEFAULT_PREFIXES_for_test)
+        real_xsd_string = COMMON_DATATYPES["string"] # 从 COMMON_DATATYPES 获取
+        mock_metadata_triples = [
+            f"<http://example.com/sourceRel123/context> <{real_dcterms_citation}> {format_literal('TestSourceCitationForRel', datatype=real_xsd_string)} ."
+            # 可以在这里添加更多模拟的元数据三元组
+            # More mock metadata triples can be added here
+        ]
+        mock_create_source_metadata.return_value = (mock_source_graph_uri, mock_metadata_triples)
+
+        # 2. 准备输入参数
+        # 2. Prepare input parameters
+        subject_uri_input = "http://example.com/subject/s1"
+        predicate_curie_input = "tcm-onto:relatesTo" # 确保 tcm-onto 在 mock_DEFAULT_PREFIXES_for_test 中
+                                                   # Ensure tcm-onto is in mock_DEFAULT_PREFIXES_for_test
+        object_uri_input = "http://example.com/object/o1"
+        source_details_input = {
+            "citation": "Test Relationship Citation",
+            "document_identifier": "TestDocRel",
+            "source_type": "TestType",
+            # 提供足够的细节以满足 create_source_metadata 的参数需求（即使它被mock了）
+            # Provide enough details to satisfy create_source_metadata's parameter needs (even if mocked)
+            "source_id_components": ["TestDocRel", "RelContext1"] 
+        }
+
+        # 3. 调用被测试的函数
+        # 3. Call the function under test
+        sparql_query = prepare_relationship_sparql_insert(
+            subject_uri_input, predicate_curie_input, object_uri_input, source_details_input
+        )
+
+        # 4. 验证 SPARQL 查询字符串
+        # 4. Verify the SPARQL query string
+        self.assertTrue(sparql_query.startswith("INSERT DATA {"), "查询应以 INSERT DATA { 开始")
+        self.assertTrue(sparql_query.strip().endswith("}"), "查询应以 } 结束")
+        self.assertIn(f"GRAPH <{mock_source_graph_uri}> {{", sparql_query, "缺少关系图的 GRAPH 子句")
+
+        # 验证关系三元组
+        # Verify the relationship triple
+        expected_predicate_expanded = _expand_curie(predicate_curie_input, mock_DEFAULT_PREFIXES_for_test)
+        expected_relationship_triple = (
+            f"{format_uri(subject_uri_input)} {format_uri(expected_predicate_expanded)} {format_uri(object_uri_input)} ."
+        )
+        
+        # 提取关系图内容
+        # Extract relationship graph content
+        graph_block_start_idx = sparql_query.find(f"GRAPH <{mock_source_graph_uri}> {{") + len(f"GRAPH <{mock_source_graph_uri}> {{")
+        balance = 1
+        graph_block_end_idx = -1
+        # 找到匹配的 '}'
+        # Find the matching '}'
+        temp_idx = graph_block_start_idx 
+        while temp_idx < len(sparql_query):
+            if sparql_query[temp_idx] == '{':
+                balance +=1
+            elif sparql_query[temp_idx] == '}':
+                balance -=1
+                if balance == 0:
+                    graph_block_end_idx = temp_idx
+                    break
+            temp_idx += 1
+        
+        self.assertNotEqual(graph_block_end_idx, -1, "未能找到 GRAPH 块的结束符。") # "Failed to find the end of the GRAPH block."
+        relationship_graph_content = sparql_query[graph_block_start_idx:graph_block_end_idx].strip()
+        
+        self.assertIn(expected_relationship_triple.strip(), relationship_graph_content, "关系三元组不正确或未在指定图中找到。")
+                                                                                    # "Relationship triple is incorrect or not found in the specified graph."
+
+        # 验证来源元数据三元组
+        # Verify source metadata triples
+        metadata_triples_joined = "\n".join(mock_metadata_triples)
+        self.assertIn(metadata_triples_joined, sparql_query, "来源元数据三元组未找到。")
+                                                            # "Source metadata triples not found."
+        # 确保元数据三元组不在关系图中
+        # Ensure metadata triples are not in the relationship graph
+        for mock_meta_triple in mock_metadata_triples:
+            self.assertNotIn(mock_meta_triple.strip(), relationship_graph_content, "来源元数据三元组不应在关系图中。")
+                                                                                  # "Source metadata triple should not be in the relationship graph."
+
+
+        # 5. 确保 mock 被正确调用
+        # 5. Ensure mock was called correctly
+        mock_create_source_metadata.assert_called_once_with(**source_details_input)
+
 
 if __name__ == '__main__':
     unittest.main(argv=['first-arg-is-ignored'], exit=False)
