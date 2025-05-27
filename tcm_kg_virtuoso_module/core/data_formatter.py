@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Union, Tuple # 确保导入 Union 和 T
 from tcm_kg_virtuoso_module.config import settings
 from tcm_kg_virtuoso_module.config.settings import DEFAULT_PREFIXES # 显式导入以供 _expand_curie 使用
 from .uri_minter import mint_entity_uri
-from .source_manager import create_source_metadata # 步骤1：导入 create_source_metadata
+
 
 
 

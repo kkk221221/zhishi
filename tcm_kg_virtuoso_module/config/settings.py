@@ -7,6 +7,8 @@ from tcm_kg_virtuoso_module.core.connection_manager import VirtuosoConnectionMan
 # 默认本体URI和前缀定义 (与之前步骤一致)
 # Default ontology URI and prefix definitions (consistent with previous steps)
 ONTOLOGY_BASE_URI = "http://tcm.example.org/ontology/"
+ENTITY_BASE_URI = "http://tcm.example.org/resource/"
+SOURCE_BASE_URI = "http://tcm.example.org/source/"
 DEFAULT_PREFIXES = {
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
     "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
