@@ -1,7 +1,7 @@
 # tcm_kg_virtuoso_module/utils/uri_utils.py
 import re
 from urllib.parse import quote_plus, urlparse
-from tcm_kg_virtuoso_module.core.config import NAMESPACES
+from ..core.config import NAMESPACES
 
 # 编译一个简单的正则表达式，用于基础的URI格式校验
 # 这个正则表达式检查是否存在协议头 (e.g., http://, ftp://) 或者是否是一个已知的命名空间前缀

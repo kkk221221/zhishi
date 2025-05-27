@@ -4,11 +4,11 @@ from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
 # 应用入口点和依赖项获取函数
-from tcm_kg_virtuoso_module.main_fastapi_app import app # 主 FastAPI 应用实例
-from tcm_kg_virtuoso_module.api import dependencies # 依赖项模块
-from tcm_kg_virtuoso_module.services.entity_service import EntityService
-from tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity
-from tcm_kg_virtuoso_module.api.schemas import EntitySchema, CreateEntitySchema # Pydantic schemas
+from src.tcm_kg_virtuoso_module.main_fastapi_app import app # 主 FastAPI 应用实例
+from src.tcm_kg_virtuoso_module.api import dependencies # 依赖项模块
+from src.tcm_kg_virtuoso_module.services.entity_service import EntityService
+from src.tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity
+from src.tcm_kg_virtuoso_module.api.schemas import EntitySchema, CreateEntitySchema # Pydantic schemas
 
 # 使用 TestClient 来发送HTTP请求到FastAPI应用
 client = TestClient(app)

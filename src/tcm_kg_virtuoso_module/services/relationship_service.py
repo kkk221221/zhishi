@@ -1,10 +1,10 @@
 # tcm_kg_virtuoso_module/services/relationship_service.py
 from typing import Optional, List, Tuple, Dict, Any
-from tcm_kg_virtuoso_module.models.tcm_relationship import TCMRelationship
-from tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
-from tcm_kg_virtuoso_module.graph_db import sparql_builder
-from tcm_kg_virtuoso_module.core import config as app_config
-from tcm_kg_virtuoso_module.utils.uri_utils import validate_uri_format
+from ..models.tcm_relationship import TCMRelationship
+from ..graph_db.virtuoso_connector import VirtuosoConnector
+from ..graph_db import sparql_builder
+from ..core import config as app_config
+from ..utils.uri_utils import validate_uri_format
 
 class RelationshipService:
     """
@@ -222,10 +222,11 @@ if __name__ == '__main__':
         connector_instance = VirtuosoConnector()
         rel_service = RelationshipService(connector=connector_instance)
         # 依赖 EntityService 示例中的实体
-        entity_service_module = __import__('tcm_kg_virtuoso_module.services.entity_service', fromlist=['EntityService'])
+        # For __main__ block, assuming PROJECT_ROOT is in sys.path as done in scripts
+        entity_service_module = __import__('src.tcm_kg_virtuoso_module.services.entity_service', fromlist=['EntityService'])
         EntityService = entity_service_module.EntityService
         # Need to import TCMEntity for the __main__ block
-        from tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity
+        from ..models.tcm_entity import TCMEntity # Made this relative
         entity_service = EntityService(connector=connector_instance)
 
 

@@ -1,5 +1,5 @@
 # tcm_kg_virtuoso_module/graph_db/sparql_builder.py
-from tcm_kg_virtuoso_module.core.config import get_sparql_prefixes
+from ..core.config import get_sparql_prefixes
 
 # Reusable SPARQL prefixes string
 SPARQL_PREFIXES = get_sparql_prefixes()
@@ -120,7 +120,7 @@ DELETE DATA {{
 
 
 if __name__ == '__main__':
-    from tcm_kg_virtuoso_module.core.config import DEFAULT_GRAPH_URI, NAMESPACES
+    from ..core.config import DEFAULT_GRAPH_URI, NAMESPACES
 
     print("--- Example INSERT Query ---")
     triples_to_insert = [

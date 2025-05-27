@@ -1,7 +1,7 @@
 # tests/graph_db/test_sparql_builder.py
 import unittest
-from tcm_kg_virtuoso_module.graph_db import sparql_builder
-from tcm_kg_virtuoso_module.core.config import DEFAULT_GRAPH_URI, NAMESPACES
+from src.tcm_kg_virtuoso_module.graph_db import sparql_builder
+from src.tcm_kg_virtuoso_module.core.config import DEFAULT_GRAPH_URI, NAMESPACES
 
 class TestSparqlBuilder(unittest.TestCase):
 

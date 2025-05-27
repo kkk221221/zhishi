@@ -1,9 +1,9 @@
 # tcm_kg_virtuoso_module/services/ontology_service.py
 from typing import Optional, List, Dict, Any
-from tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
-from tcm_kg_virtuoso_module.graph_db import sparql_builder
-from tcm_kg_virtuoso_module.core import config as app_config
-# from tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity # 可能用于定义类的元数据
+from ..graph_db.virtuoso_connector import VirtuosoConnector
+from ..graph_db import sparql_builder
+from ..core import config as app_config
+# from ..models.tcm_entity import TCMEntity # 可能用于定义类的元数据
 
 class OntologyService:
     """

@@ -1,10 +1,10 @@
 # tcm_kg_virtuoso_module/services/entity_service.py
 from typing import Optional, List, Dict, Any, Tuple
-from tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity
-from tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
-from tcm_kg_virtuoso_module.graph_db import sparql_builder
-from tcm_kg_virtuoso_module.core import config as app_config # 使用 app_config 避免与方法参数名冲突
-from tcm_kg_virtuoso_module.utils.uri_utils import validate_uri_format, generate_entity_uri # 假设未来可能用到 generate_entity_uri
+from ..models.tcm_entity import TCMEntity
+from ..graph_db.virtuoso_connector import VirtuosoConnector
+from ..graph_db import sparql_builder
+from ..core import config as app_config # 使用 app_config 避免与方法参数名冲突
+from ..utils.uri_utils import validate_uri_format, generate_entity_uri # 假设未来可能用到 generate_entity_uri
 
 class EntityService:
     """

@@ -1,8 +1,8 @@
 # tests/models/test_models.py
 import unittest
 from dataclasses import is_dataclass
-from tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity
-from tcm_kg_virtuoso_module.models.tcm_relationship import TCMRelationship
+from src.tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity
+from src.tcm_kg_virtuoso_module.models.tcm_relationship import TCMRelationship
 
 class TestModels(unittest.TestCase):
 

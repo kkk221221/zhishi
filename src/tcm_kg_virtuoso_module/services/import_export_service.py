@@ -1,10 +1,10 @@
 # tcm_kg_virtuoso_module/services/import_export_service.py
 from typing import List, Tuple, Optional, Any
-from tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
-from tcm_kg_virtuoso_module.services.entity_service import EntityService
-from tcm_kg_virtuoso_module.services.relationship_service import RelationshipService
-from tcm_kg_virtuoso_module.graph_db import sparql_builder
-from tcm_kg_virtuoso_module.core import config as app_config
+from ..graph_db.virtuoso_connector import VirtuosoConnector
+from .entity_service import EntityService
+from .relationship_service import RelationshipService
+from ..graph_db import sparql_builder
+from ..core import config as app_config
 import os # 用于 import_from_processed_data 中的文件路径操作
 
 class ImportExportService:
@@ -152,8 +152,8 @@ if __name__ == '__main__':
     print("ImportExportService 演示 (需要配置并连接到Virtuoso)")
 
     # 引入TCMEntity和TCMRelationship用于可能的演示数据创建
-    from tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity
-    from tcm_kg_virtuoso_module.models.tcm_relationship import TCMRelationship
+    from ..models.tcm_entity import TCMEntity
+    from ..models.tcm_relationship import TCMRelationship
     
     try:
         # 准备依赖项

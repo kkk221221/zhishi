@@ -63,7 +63,7 @@ app.include_router(bulk_routes.router, prefix=common_api_prefix)
 if __name__ == "__main__":
     import uvicorn
     # 正确的启动方式通常是在项目根目录运行: 
-    # uvicorn tcm_kg_virtuoso_module.main_fastapi_app:app --reload --host 0.0.0.0 --port 8000
-    # 或者如果此文件被移到项目根目录并改名为 main_kg_app.py:
-    # uvicorn main_kg_app:app --reload --host 0.0.0.0 --port 8000
-    uvicorn.run("tcm_kg_virtuoso_module.main_fastapi_app:app", host="0.0.0.0", port=8000, reload=True)
+    # uvicorn src.tcm_kg_virtuoso_module.main_fastapi_app:app --reload --host 0.0.0.0 --port 8000
+    # 或者如果此文件被移到项目根目录并改名为 main_kg_app.py (且src目录是PYTHONPATH的一部分):
+    # uvicorn src.main_kg_app:app --reload --host 0.0.0.0 --port 8000 # 这行是假设，主要关注上面的
+    uvicorn.run("src.tcm_kg_virtuoso_module.main_fastapi_app:app", host="0.0.0.0", port=8000, reload=True)

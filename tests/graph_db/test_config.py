@@ -2,7 +2,7 @@
 import os
 import unittest
 from unittest.mock import patch
-from tcm_kg_virtuoso_module.core import config
+from src.tcm_kg_virtuoso_module.core import config
 
 class TestConfig(unittest.TestCase):
 

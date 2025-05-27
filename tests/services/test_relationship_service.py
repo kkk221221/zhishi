@@ -1,10 +1,10 @@
 # tests/services/test_relationship_service.py
 import unittest
 from unittest.mock import MagicMock, patch
-from tcm_kg_virtuoso_module.services.relationship_service import RelationshipService
-from tcm_kg_virtuoso_module.models.tcm_relationship import TCMRelationship
-from tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
-from tcm_kg_virtuoso_module.core import config as app_config # 实际配置
+from src.tcm_kg_virtuoso_module.services.relationship_service import RelationshipService
+from src.tcm_kg_virtuoso_module.models.tcm_relationship import TCMRelationship
+from src.tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
+from src.tcm_kg_virtuoso_module.core import config as app_config # 实际配置
 
 class TestRelationshipService(unittest.TestCase):
 
@@ -21,7 +21,7 @@ class TestRelationshipService(unittest.TestCase):
         
         self.relationship_service = RelationshipService(connector=self.mock_connector, config_module=self.mock_config)
 
-    @patch('tcm_kg_virtuoso_module.graph_db.sparql_builder.build_insert_triples_sparql')
+    @patch('src.tcm_kg_virtuoso_module.graph_db.sparql_builder.build_insert_triples_sparql')
     def test_add_relationship_success(self, mock_build_insert):
         source_uri = self.mock_config.NAMESPACES["tcm_entity"] + "Herb001"
         predicate_uri = self.mock_config.NAMESPACES["tcm_prop"] + "hasEffect"
@@ -114,7 +114,7 @@ class TestRelationshipService(unittest.TestCase):
             self.relationship_service.get_relationships_for_entity("http://example.com/e1", direction="sideways")
 
 
-    @patch('tcm_kg_virtuoso_module.graph_db.sparql_builder.build_delete_triples_sparql')
+    @patch('src.tcm_kg_virtuoso_module.graph_db.sparql_builder.build_delete_triples_sparql')
     def test_delete_relationship_success(self, mock_build_delete):
         source = self.mock_config.NAMESPACES["tcm_entity"] + "s1"
         predicate = self.mock_config.NAMESPACES["tcm_prop"] + "p1"

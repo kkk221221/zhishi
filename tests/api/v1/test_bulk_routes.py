@@ -3,10 +3,10 @@ import unittest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
-from tcm_kg_virtuoso_module.main_fastapi_app import app
-from tcm_kg_virtuoso_module.api import dependencies
-from tcm_kg_virtuoso_module.services.import_export_service import ImportExportService
-from tcm_kg_virtuoso_module.api.schemas import BulkInsertTriplesRequest, TripleSchema
+from src.tcm_kg_virtuoso_module.main_fastapi_app import app
+from src.tcm_kg_virtuoso_module.api import dependencies
+from src.tcm_kg_virtuoso_module.services.import_export_service import ImportExportService
+from src.tcm_kg_virtuoso_module.api.schemas import BulkInsertTriplesRequest, TripleSchema
 
 client = TestClient(app)
 

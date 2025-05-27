@@ -1,7 +1,7 @@
 # tests/utils/test_uri_utils.py
 import unittest
-from tcm_kg_virtuoso_module.utils import uri_utils
-from tcm_kg_virtuoso_module.core.config import NAMESPACES # 用于校验生成的前缀是否正确
+from src.tcm_kg_virtuoso_module.utils import uri_utils
+from src.tcm_kg_virtuoso_module.core.config import NAMESPACES # 用于校验生成的前缀是否正确
 
 class TestUriUtils(unittest.TestCase):
 

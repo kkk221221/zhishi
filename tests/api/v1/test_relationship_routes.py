@@ -3,11 +3,11 @@ import unittest
 from unittest.mock import MagicMock, patch
 from fastapi.testclient import TestClient
 
-from tcm_kg_virtuoso_module.main_fastapi_app import app
-from tcm_kg_virtuoso_module.api import dependencies
-from tcm_kg_virtuoso_module.services.relationship_service import RelationshipService
-from tcm_kg_virtuoso_module.models.tcm_relationship import TCMRelationship
-from tcm_kg_virtuoso_module.api.schemas import CreateRelationshipSchema, RelationshipSchema, DeleteRelationshipSchema
+from src.tcm_kg_virtuoso_module.main_fastapi_app import app
+from src.tcm_kg_virtuoso_module.api import dependencies
+from src.tcm_kg_virtuoso_module.services.relationship_service import RelationshipService
+from src.tcm_kg_virtuoso_module.models.tcm_relationship import TCMRelationship
+from src.tcm_kg_virtuoso_module.api.schemas import CreateRelationshipSchema, RelationshipSchema, DeleteRelationshipSchema
 
 client = TestClient(app)
 

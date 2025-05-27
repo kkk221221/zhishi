@@ -15,14 +15,14 @@ if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
 try:
-    from tcm_kg_virtuoso_module.core import config as app_config
-    from tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
-    from tcm_kg_virtuoso_module.services.entity_service import EntityService
-    from tcm_kg_virtuoso_module.services.relationship_service import RelationshipService
-    from tcm_kg_virtuoso_module.services.import_export_service import ImportExportService
-    from tcm_kg_virtuoso_module.api.schemas import TripleSchema # 用于校验三元组结构 (可选)
+    from src.tcm_kg_virtuoso_module.core import config as app_config
+    from src.tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
+    from src.tcm_kg_virtuoso_module.services.entity_service import EntityService
+    from src.tcm_kg_virtuoso_module.services.relationship_service import RelationshipService
+    from src.tcm_kg_virtuoso_module.services.import_export_service import ImportExportService
+    from src.tcm_kg_virtuoso_module.api.schemas import TripleSchema # 用于校验三元组结构 (可选)
 except ImportError as e:
-    print(f"错误：导入模块失败。请确保脚本能正确访问 'tcm_kg_virtuoso_module'。")
+    print(f"错误：导入模块失败。请确保脚本能正确访问 'src.tcm_kg_virtuoso_module'。") # Updated error message
     print(f"ImportError: {e}")
     print(f"当前 Python 路径 (sys.path): {sys.path}")
     print(f"项目根目录 (尝试添加到路径): {PROJECT_ROOT}")

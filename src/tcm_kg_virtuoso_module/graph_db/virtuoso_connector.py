@@ -1,7 +1,7 @@
 # tcm_kg_virtuoso_module/graph_db/virtuoso_connector.py
 from SPARQLWrapper import SPARQLWrapper, JSON, XML, N3, RDFXML
 from SPARQLWrapper.SPARQLExceptions import QueryBadFormed, EndPointNotFound, SPARQLWrapperException
-from tcm_kg_virtuoso_module.core.config import VIRTUOSO_URL, VIRTUOSO_USER, VIRTUOSO_PASSWORD, DEFAULT_GRAPH_URI, get_sparql_prefixes
+from ..core.config import VIRTUOSO_URL, VIRTUOSO_USER, VIRTUOSO_PASSWORD, DEFAULT_GRAPH_URI, get_sparql_prefixes
 
 # Common return formats for SELECT queries
 RETURN_FORMAT_JSON = JSON

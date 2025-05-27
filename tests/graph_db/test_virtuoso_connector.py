@@ -6,9 +6,9 @@ from SPARQLWrapper import SPARQLWrapper, JSON, RDFXML
 from SPARQLWrapper.SPARQLExceptions import QueryBadFormed, EndPointNotFound, SPARQLWrapperException
 
 # Module under test
-from tcm_kg_virtuoso_module.graph_db import virtuoso_connector
+from src.tcm_kg_virtuoso_module.graph_db import virtuoso_connector
 # Import config to allow reloading if necessary for env var testing, though less critical here
-from tcm_kg_virtuoso_module.core import config 
+from src.tcm_kg_virtuoso_module.core import config 
 
 class TestVirtuosoConnector(unittest.TestCase):
 

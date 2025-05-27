@@ -3,12 +3,12 @@
 
 from functools import lru_cache # 用于缓存服务实例，提高效率
 
-from tcm_kg_virtuoso_module.core import config as app_config
-from tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
-from tcm_kg_virtuoso_module.services.entity_service import EntityService
-from tcm_kg_virtuoso_module.services.relationship_service import RelationshipService
-from tcm_kg_virtuoso_module.services.import_export_service import ImportExportService
-# from tcm_kg_virtuoso_module.services.ontology_service import OntologyService # 本体服务暂时可选
+from ..core import config as app_config
+from ..graph_db.virtuoso_connector import VirtuosoConnector
+from ..services.entity_service import EntityService
+from ..services.relationship_service import RelationshipService
+from ..services.import_export_service import ImportExportService
+# from ..services.ontology_service import OntologyService # 本体服务暂时可选
 
 # 使用 lru_cache 来确保在单个应用生命周期/请求处理中，服务实例只被创建一次。
 # 注意: 对于有状态的服务或需要每个请求不同实例的场景，不应使用 lru_cache。

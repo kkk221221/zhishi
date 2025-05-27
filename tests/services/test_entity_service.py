@@ -1,10 +1,10 @@
 # tests/services/test_entity_service.py
 import unittest
 from unittest.mock import MagicMock, patch, call # call 用于验证多次调用时的参数
-from tcm_kg_virtuoso_module.services.entity_service import EntityService
-from tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity
-from tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
-from tcm_kg_virtuoso_module.core import config as app_config # 实际配置
+from src.tcm_kg_virtuoso_module.services.entity_service import EntityService
+from src.tcm_kg_virtuoso_module.models.tcm_entity import TCMEntity
+from src.tcm_kg_virtuoso_module.graph_db.virtuoso_connector import VirtuosoConnector
+from src.tcm_kg_virtuoso_module.core import config as app_config # 实际配置
 
 class TestEntityService(unittest.TestCase):
 
@@ -28,7 +28,7 @@ class TestEntityService(unittest.TestCase):
         # 实例化 EntityService，传入 mock 对象
         self.entity_service = EntityService(connector=self.mock_connector, config_module=self.mock_config)
 
-    @patch('tcm_kg_virtuoso_module.graph_db.sparql_builder.build_insert_triples_sparql')
+    @patch('src.tcm_kg_virtuoso_module.graph_db.sparql_builder.build_insert_triples_sparql')
     def test_add_entity_success(self, mock_build_insert):
         # 测试成功添加实体
         test_uri = self.mock_config.NAMESPACES["tcm_entity"] + "Herb001"
@@ -76,7 +76,7 @@ class TestEntityService(unittest.TestCase):
             self.entity_service.add_entity(entity)
 
 
-    @patch('tcm_kg_virtuoso_module.graph_db.sparql_builder.build_select_entity_properties_sparql')
+    @patch('src.tcm_kg_virtuoso_module.graph_db.sparql_builder.build_select_entity_properties_sparql')
     def test_get_entity_by_uri_found(self, mock_build_select):
         # 测试找到实体的情况
         entity_uri = self.mock_config.NAMESPACES["tcm_entity"] + "Herb002"
@@ -124,7 +124,7 @@ class TestEntityService(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "要检索的实体URI 'invalid uri' 无效"):
             self.entity_service.get_entity_by_uri("invalid uri")
 
-    @patch('tcm_kg_virtuoso_module.graph_db.sparql_builder.SPARQL_PREFIXES', "PREFIX ex: <http://example.com/>") # Mock prefixes for query string check
+    @patch('src.tcm_kg_virtuoso_module.graph_db.sparql_builder.SPARQL_PREFIXES', "PREFIX ex: <http://example.com/>") # Mock prefixes for query string check
     def test_delete_entity_success(self, mock_prefixes):
         entity_uri = self.mock_config.NAMESPACES["tcm_entity"] + "HerbToDelete"
         self.mock_connector.execute_update_query.return_value = True # 模拟数据库操作成功
@@ -147,7 +147,7 @@ DELETE WHERE {{
         self.assertEqual(actual_query.strip().replace("\n",""), expected_delete_subject_query.strip().replace("\n",""))
 
 
-    @patch('tcm_kg_virtuoso_module.graph_db.sparql_builder.SPARQL_PREFIXES', "PREFIX ex: <http://example.com/>")
+    @patch('src.tcm_kg_virtuoso_module.graph_db.sparql_builder.SPARQL_PREFIXES', "PREFIX ex: <http://example.com/>")
     def test_delete_entity_cascade_success(self, mock_prefixes):
         entity_uri = self.mock_config.NAMESPACES["tcm_entity"] + "HerbToDeleteCascade"
         self.mock_connector.execute_update_query.return_value = True
