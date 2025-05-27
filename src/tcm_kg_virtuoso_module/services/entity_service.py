@@ -6,6 +6,35 @@ from ..graph_db import sparql_builder
 from ..core import config as app_config # 使用 app_config 避免与方法参数名冲突
 from ..utils.uri_utils import validate_uri_format, generate_entity_uri # 假设未来可能用到 generate_entity_uri
 
+from typing import Optional, List, Dict, Any, Tuple, TypedDict, Literal # Added TypedDict, Literal
+
+# TypedDicts for SPARQL JSON results (basic structure)
+class SparqlBindingValue(TypedDict, total=False):
+    """单个SPARQL绑定值的结构 (例如 ?s, ?p, ?o 中的一个) """
+    type: Literal["uri", "literal", "typed-literal", "bnode"] # 值类型
+    value: str  # 值本身
+    datatype: Optional[str] # 数据类型URI (例如 xsd:integer)，仅当type为typed-literal时存在
+    # xml_lang: Optional[str] # 语言标签 (例如 @en)，仅当type为literal且有语言标签时存在
+
+class SparqlBinding(TypedDict):
+    """SPARQL查询结果中单个绑定行 (binding) 的结构。"""
+    # 键是查询中的变量名 (例如 "s", "p", "o", "predicate", "object")
+    # 这里我们为 get_entity_by_uri 中明确使用的 "predicate" 和 "object" 定义
+    predicate: SparqlBindingValue
+    object: SparqlBindingValue
+    # 如果其他变量也总是存在，可以在这里添加
+    # 或者，更通用的做法是 Dict[str, SparqlBindingValue]，但显式定义有助于类型检查
+
+class SparqlSelectResults(TypedDict):
+    """SPARQL SELECT查询结果中 "results" 键对应的值的结构。"""
+    bindings: List[SparqlBinding]
+
+class SparqlQuerySolution(TypedDict, total=False): # total=False因为ASK查询没有results但有boolean
+    """SPARQL查询返回的完整JSON对象的顶层结构 (简化版)。"""
+    # head: Dict[str, List[str]] # 如果需要处理 head 部分
+    results: SparqlSelectResults
+    boolean: Optional[bool] # 对于ASK查询
+
 class EntityService:
     """
     实体服务类
@@ -99,7 +128,6 @@ class EntityService:
             Optional[TCMEntity]: 如果找到实体，则返回TCMEntity对象，否则返回None。
         """
         if not entity_uri or not validate_uri_format(entity_uri):
-            # print(f"错误: 实体URI '{entity_uri}' 无效。")
             raise ValueError(f"要检索的实体URI '{entity_uri}' 无效。")
 
         query = sparql_builder.build_select_entity_properties_sparql(
@@ -107,58 +135,90 @@ class EntityService:
             entity_uri=entity_uri
         )
         
-        results = self.connector.execute_select_query(query)
+        # Add type hint for results_data
+        results_data: Optional[SparqlQuerySolution] = self.connector.execute_select_query(query)
         
-        if results is None or not results.get("results", {}).get("bindings"):
+        # Use .get() for safer access and to help Pylance
+        if results_data is None:
             return None
+        
+        sparql_results: Optional[SparqlSelectResults] = results_data.get("results")
+        if sparql_results is None:
+            # This could happen for ASK queries if they were mistakenly processed here,
+            # or if the result format is unexpected.
+            return None 
+            
+        bindings: List[SparqlBinding] = sparql_results.get("bindings", [])
+        if not bindings:
+            # URI might exist but have no properties/types listed (e.g. only referenced as an object)
+            # Depending on desired behavior, one might return TCMEntity(uri=entity_uri) or None.
+            # For now, returning None if no properties/types are found.
+            # If an entity must exist if it has triples pointing to it, this check might change.
+            # To check if an entity exists at all, an ASK query might be better first.
+            # print(f"调试: 实体 <{entity_uri}> 未找到任何绑定 (类型或属性)。")
+            return None
+
 
         properties: Dict[str, Any] = {}
         entity_types: List[str] = []
 
-        for binding in results["results"]["bindings"]:
-            predicate = binding["predicate"]["value"]
-            obj = binding["object"] # 对象本身，包含类型和值
+        for binding in bindings: # binding is now hinted as SparqlBinding
+            predicate_binding_value: Optional[SparqlBindingValue] = binding.get("predicate")
+            object_binding_value: Optional[SparqlBindingValue] = binding.get("object")
 
-            value: Any
-            if obj["type"] == "uri":
-                value = obj["value"]
-            elif obj["type"] == "literal" or obj["type"] == "typed-literal":
-                value = obj["value"]
-                # 对于类型化字面量，可以尝试转换 Python 类型
-                if "datatype" in obj:
-                    datatype = obj["datatype"]
-                    if datatype == self.config.NAMESPACES.get("xsd", "") + "integer":
-                        try: value = int(value)
-                        except ValueError: pass
-                    elif datatype == self.config.NAMESPACES.get("xsd", "") + "float" or                          datatype == self.config.NAMESPACES.get("xsd", "") + "double" or                          datatype == self.config.NAMESPACES.get("xsd", "") + "decimal":
-                        try: value = float(value)
-                        except ValueError: pass
-                    elif datatype == self.config.NAMESPACES.get("xsd", "") + "boolean":
-                        value = value.lower() == "true"
-                    # 可以根据需要添加更多xsd类型的处理
-            else: # 例如 bnode (匿名节点)，这里简单处理为字符串值
-                value = obj["value"]
+            if not predicate_binding_value or not object_binding_value:
+                # print(f"警告: 在实体 <{entity_uri}> 的结果中发现不完整的绑定: {binding}") # 日志
+                continue # Skip this malformed binding
 
+            predicate: str = predicate_binding_value.get("value", "") # Default to empty string if "value" key is missing
+            
+            value_type: Optional[str] = object_binding_value.get("type")
+            obj_value_str: str = object_binding_value.get("value", "") # Default to empty string
+
+            processed_value: Any = obj_value_str # Default to the string value
+
+            if value_type == "uri":
+                processed_value = obj_value_str
+            elif value_type == "literal" or value_type == "typed-literal":
+                processed_value = obj_value_str # Keep as string initially
+                datatype: Optional[str] = object_binding_value.get("datatype")
+                if datatype:
+                    # Attempt type conversion for known XSD types
+                    xsd_ns = self.config.NAMESPACES.get("xsd", "http://www.w3.org/2001/XMLSchema#")
+                    if datatype == xsd_ns + "integer":
+                        try: processed_value = int(obj_value_str)
+                        except ValueError: pass # Keep as string if conversion fails
+                    elif datatype in [xsd_ns + "float", xsd_ns + "double", xsd_ns + "decimal"]:
+                        try: processed_value = float(obj_value_str)
+                        except ValueError: pass
+                    elif datatype == xsd_ns + "boolean":
+                        processed_value = obj_value_str.lower() == "true"
+            # else: bnode or other types, keep as string value for now
 
             if predicate == self.rdf_type_uri:
-                if value not in entity_types: # 确保类型不重复
-                    entity_types.append(str(value))
+                if str(processed_value) not in entity_types: # Ensure type URI is a string
+                    entity_types.append(str(processed_value))
             else:
-                if predicate in properties:
-                    current_prop_value = properties[predicate]
-                    if isinstance(current_prop_value, list):
-                        if value not in current_prop_value: # 避免重复值
-                             current_prop_value.append(value)
-                    elif current_prop_value != value: # 如果原先不是列表且新值不同
-                        properties[predicate] = [current_prop_value, value]
-                else:
-                    properties[predicate] = value
+                current_prop_val = properties.get(predicate)
+                if current_prop_val is not None:
+                    if isinstance(current_prop_val, list):
+                        if processed_value not in current_prop_val:
+                            current_prop_val.append(processed_value)
+                    elif current_prop_val != processed_value: # Property already exists, value is different, convert to list
+                        properties[predicate] = [current_prop_val, processed_value]
+                    # If value is the same, do nothing
+                else: # New property
+                    properties[predicate] = processed_value
         
-        if not entity_types and not properties: # 如果查询有结果但解析后为空，说明可能URI存在但无类型和属性
-            # 这取决于图谱数据，可能是一个仅被引用的URI
-            # print(f"警告: 实体 {entity_uri} 存在但未找到类型或属性信息。")
-            # 返回一个只有URI的实体对象，或根据业务逻辑返回None
-            return TCMEntity(uri=entity_uri)
+        # If after processing all bindings, there are no types and no properties,
+        # it implies the URI might exist but is "empty" or only referenced.
+        # Behavior here depends on requirements: return an empty TCMEntity or None.
+        # Current logic: if bindings were processed but resulted in no types/props, it's an empty entity.
+        # If initial `bindings` list was empty, we returned None earlier.
+        if not entity_types and not properties and bindings: 
+             return TCMEntity(uri=entity_uri) # Entity exists but is "empty"
+        elif not entity_types and not properties and not bindings: # Should have been caught by earlier check
+             return None
 
 
         return TCMEntity(uri=entity_uri, entity_types=entity_types, properties=properties)
