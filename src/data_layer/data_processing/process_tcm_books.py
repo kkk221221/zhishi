@@ -358,10 +358,10 @@ def process_tcm_books(llm_interface: LLMInterface):
                         current_paragraph_number = filename_counters.get(counter_key, 0) + 1
                         filename_counters[counter_key] = current_paragraph_number
 
-                        if sub_section_title_str:
-                            output_filename = f"{safe_main_section_title}-{sub_section_title_str}_{current_paragraph_number}.txt"
-                        else:
-                            output_filename = f"{safe_main_section_title}_{current_paragraph_number}.txt"
+                        # The variable sub_section_title_str is guaranteed to have a value,
+                        # defaulting to "未命名子章节" if not provided by the LLM,
+                        # as per the logic in perform_fine_grained_segmentation.
+                        output_filename = f"{safe_main_section_title}_{sub_section_title_str}_{current_paragraph_number}.txt"
                         
                         output_file_path = os.path.join(book_output_dir, output_filename)
                         write_text_file(output_file_path, para_content)
