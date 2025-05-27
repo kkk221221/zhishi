@@ -10,7 +10,7 @@ mock_settings_uri.SOURCE_BASE_URI = "http://test.com/source/"
 
 # 使用 patch 来替换真实的 settings 模块
 # Use patch to replace the actual settings module
-@patch('tcm_kg_virtuoso_module.config.settings', mock_settings_uri)
+@patch('tcm_kg_virtuoso_module.core.uri_minter.settings', mock_settings_uri)
 class TestUriMinter(unittest.TestCase):
 
     def setUp(self):
