@@ -3,8 +3,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import HttpUrl
 from typing import List, Any, Dict, Union # Union 已添加
 
-from tcm_kg_virtuoso_module.api.request_schemas import EntityCreate, Attribute as AttributeSchema
-from tcm_kg_virtuoso_module.core.graph_operations import add_entity
+from tcm_kg_virtuoso_module.api.request_schemas import EntityCreate, Attribute as AttributeSchema, RelationshipCreate
+from tcm_kg_virtuoso_module.core.graph_operations import add_entity, add_relationship
 from tcm_kg_virtuoso_module.core.connection_manager import VirtuosoConnectionManager
 from tcm_kg_virtuoso_module.config.settings import get_virtuoso_connection_manager # 假设此函数后续会定义
 
@@ -84,4 +84,57 @@ async def create_entity_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="创建实体时发生意外错误。"
+        )
+
+@router.post(
+    "/api/v1/tcm/graph/relationships",
+    status_code=status.HTTP_201_CREATED,
+    summary="在知识图谱中添加一个新的关系",
+    response_description="确认关系已添加的消息。",
+)
+async def create_relationship_endpoint(
+    relationship_data: RelationshipCreate,
+    conn_manager: VirtuosoConnectionManager = Depends(get_virtuoso_connection_manager),
+):
+    """
+    用于在知识图谱中的实体之间添加新关系的端点。
+    它使用 `RelationshipCreate` 模式进行请求体验证，并调用
+    `tcm_kg_virtuoso_module.core.graph_operations` 中的 `add_relationship` 函数。
+    """
+    try:
+        # 准备 add_relationship 的 source_details 字典
+        # 这些键必须与 core.source_manager.create_source_metadata 的参数匹配
+        source_details_for_core = {
+            "citation": relationship_data.source.citation,
+            "original_text": relationship_data.source.originalText,
+            "document_identifier": relationship_data.source.documentIdentifier,
+            # --- RelationshipCreate.source 中缺失参数的默认值 ---
+            "source_type": "APIRelationshipCreation", # 示例默认值
+            "source_section": "Relationship", # 示例：固定值
+            "source_subsection": relationship_data.predicate, # 示例：使用关系谓词作为子章节
+            # 此端点默认不提供 *uri_args
+        }
+
+        # 准备 add_relationship 的主 core_relationship_data 字典
+        core_relationship_data = {
+            "subject_uri": str(relationship_data.subjectUri),
+            "predicate": relationship_data.predicate,
+            "object_uri": str(relationship_data.objectUri),
+            "source_details": source_details_for_core,
+        }
+
+        add_relationship(relationship_data=core_relationship_data, conn_manager=conn_manager)
+        
+        return {"message": "Relationship added successfully"}
+
+    except ValueError as ve:
+        # 来自 add_relationship 的 ValueError (例如，缺失键，类型错误) 应为 400
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        # 捕获关系创建过程中的其他意外错误
+        # 在实际应用中应在此处记录异常
+        print(f"关系创建过程中发生意外错误: {e}") # 用于调试
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="创建关系时发生意外错误。"
         )

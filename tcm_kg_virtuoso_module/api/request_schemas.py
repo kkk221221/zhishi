@@ -16,3 +16,9 @@ class EntityCreate(BaseModel):
     label: str
     attributes: List[Attribute]
     source: Source
+
+class RelationshipCreate(BaseModel):
+    subjectUri: HttpUrl
+    predicate: str  # This will be a CURIE, e.g., "tcm-onto:hasSymptom"
+    objectUri: HttpUrl
+    source: Source # Reusing the existing Source model

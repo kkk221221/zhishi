@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from unittest.mock import patch, MagicMock
 
 from tcm_kg_virtuoso_module.main import app # 导入FastAPI应用实例
-from tcm_kg_virtuoso_module.api.request_schemas import EntityCreate, Attribute, Source # 导入请求结构
+from tcm_kg_virtuoso_module.api.request_schemas import EntityCreate, Attribute, Source, RelationshipCreate # 导入请求结构
 
 # 使用FastAPI的TestClient进行测试
 # Use FastAPI's TestClient for testing
@@ -195,3 +195,109 @@ def test_create_entity_with_http_url_attribute():
 # 还需要导入 unittest.mock 中的 patch
 # Also need to import patch from unittest.mock
 # from unittest.mock import patch
+
+# --- Tests for /api/v1/tcm/graph/relationships ---
+
+def test_create_relationship_success():
+    # Prepare request body data
+    relationship_payload = {
+        "subjectUri": "http://example.com/subject/ent1",
+        "predicate": "tcm-onto:hasIndication",
+        "objectUri": "http://example.com/object/disease1",
+        "source": {
+            "citation": "Clinical Study XYZ",
+            "originalText": "Herb A showed efficacy for Disease X.",
+            "documentIdentifier": "CS_XYZ_2023"
+        }
+    }
+
+    # Mock core.graph_operations.add_relationship
+    # The endpoint imports add_relationship from .core.graph_operations
+    with patch("tcm_kg_virtuoso_module.api.endpoints.add_relationship") as mock_add_relationship:
+        # Send POST request
+        response = client.post("/api/v1/tcm/graph/relationships", json=relationship_payload)
+        
+        # Assert status code is 201 Created
+        assert response.status_code == 201
+        # Assert response body
+        assert response.json() == {"message": "Relationship added successfully"}
+        
+        # Verify add_relationship was called correctly
+        mock_add_relationship.assert_called_once()
+        called_args, called_kwargs = mock_add_relationship.call_args
+        
+        actual_relationship_data = called_args[0] # add_relationship's first positional arg is relationship_data
+        
+        assert actual_relationship_data["subject_uri"] == relationship_payload["subjectUri"]
+        assert actual_relationship_data["predicate"] == relationship_payload["predicate"]
+        assert actual_relationship_data["object_uri"] == relationship_payload["objectUri"]
+        
+        expected_source_details = {
+            "citation": relationship_payload["source"]["citation"],
+            "original_text": relationship_payload["source"]["originalText"],
+            "document_identifier": relationship_payload["source"]["documentIdentifier"],
+            "source_type": "APIRelationshipCreation", # Default value from endpoint logic
+            "source_section": "Relationship",          # Default value from endpoint logic
+            "source_subsection": relationship_payload["predicate"] # Default value from endpoint logic
+        }
+        assert actual_relationship_data["source_details"] == expected_source_details
+        # conn_manager is passed as a keyword argument by Depends
+        assert "conn_manager" in called_kwargs 
+
+def test_create_relationship_invalid_payload_missing_field():
+    invalid_payload = {
+        "subjectUri": "http://example.com/subject/ent1",
+        # "predicate": "tcm-onto:hasIndication", # Predicate is missing
+        "objectUri": "http://example.com/object/disease1",
+        "source": {
+            "citation": "Test Citation", 
+            "originalText": "Test Text", 
+            "documentIdentifier": "test_doc_rel_1"
+        }
+    }
+    response = client.post("/api/v1/tcm/graph/relationships", json=invalid_payload)
+    assert response.status_code == 422 # FastAPI's request body validation error
+
+def test_create_relationship_invalid_payload_bad_uri():
+    payload_invalid_uri = {
+        "subjectUri": "not-a-valid-uri", # Invalid URI
+        "predicate": "tcm-onto:relatedTo",
+        "objectUri": "http://example.com/object/valid",
+        "source": {
+            "citation": "N/A", "originalText": "N/A", "documentIdentifier": "N/A"
+        }
+    }
+    response = client.post("/api/v1/tcm/graph/relationships", json=payload_invalid_uri)
+    assert response.status_code == 422
+
+def test_create_relationship_core_logic_value_error():
+    relationship_payload = {
+        "subjectUri": "http://example.com/subject/entValid1",
+        "predicate": "tcm-onto:causes",
+        "objectUri": "http://example.com/object/eventValid1",
+        "source": {"citation": "N/A", "originalText": "N/A", "documentIdentifier": "N/A"}
+    }
+    
+    with patch("tcm_kg_virtuoso_module.api.endpoints.add_relationship") as mock_add_relationship:
+        mock_add_relationship.side_effect = ValueError("Core logic error: Invalid predicate for these entities.")
+        
+        response = client.post("/api/v1/tcm/graph/relationships", json=relationship_payload)
+        
+        assert response.status_code == 400
+        assert "Core logic error: Invalid predicate for these entities." in response.json()["detail"]
+
+def test_create_relationship_core_logic_generic_exception():
+    relationship_payload = {
+        "subjectUri": "http://example.com/subject/entFail1",
+        "predicate": "tcm-onto:interactsWith",
+        "objectUri": "http://example.com/object/drugFail1",
+        "source": {"citation": "N/A", "originalText": "N/A", "documentIdentifier": "N/A"}
+    }
+    
+    with patch("tcm_kg_virtuoso_module.api.endpoints.add_relationship") as mock_add_relationship:
+        mock_add_relationship.side_effect = Exception("Database transaction failed unexpectedly.")
+        
+        response = client.post("/api/v1/tcm/graph/relationships", json=relationship_payload)
+        
+        assert response.status_code == 500
+        assert "创建关系时发生意外错误。" in response.json()["detail"] # "An unexpected error occurred while creating the relationship."

@@ -1,8 +1,8 @@
 import pytest
 from pydantic import HttpUrl, ValidationError
-from typing import List
+from typing import List, Dict, Any
 
-from tcm_kg_virtuoso_module.api.request_schemas import Attribute, Source, EntityCreate
+from tcm_kg_virtuoso_module.api.request_schemas import Attribute, Source, EntityCreate, RelationshipCreate
 
 def test_attribute_model():
     # Test with string value
@@ -168,3 +168,90 @@ def test_entity_create_empty_attributes_list():
 # It might also be useful to create an __init__.py file in tcm_kg_virtuoso_module/tests/api/
 # if it's not already there, to ensure it's treated as a Python package.
 # And an __init__.py in tcm_kg_virtuoso_module/tests/ if that's also missing.
+
+
+def test_relationship_create_model():
+    valid_source_data = {
+        "citation": "Relationship Source Citation",
+        "originalText": "Relationship original text.",
+        "documentIdentifier": "doc_rel_456"
+    }
+    valid_relationship_data = {
+        "subjectUri": "http://example.com/subject/herb1",
+        "predicate": "tcm-onto:hasSymptom",
+        "objectUri": "http://example.com/object/symptom1",
+        "source": valid_source_data
+    }
+
+    # Test valid model instantiation
+    rel = RelationshipCreate(**valid_relationship_data)
+    assert rel.subjectUri == HttpUrl("http://example.com/subject/herb1")
+    assert rel.predicate == "tcm-onto:hasSymptom"
+    assert rel.objectUri == HttpUrl("http://example.com/object/symptom1")
+    assert rel.source.citation == valid_source_data["citation"]
+
+    # Test missing subjectUri
+    with pytest.raises(ValidationError) as excinfo:
+        data = valid_relationship_data.copy()
+        del data["subjectUri"]
+        RelationshipCreate(**data)
+    assert "subjectUri" in str(excinfo.value)
+
+    # Test missing predicate
+    with pytest.raises(ValidationError) as excinfo:
+        data = valid_relationship_data.copy()
+        del data["predicate"]
+        RelationshipCreate(**data)
+    assert "predicate" in str(excinfo.value)
+
+    # Test missing objectUri
+    with pytest.raises(ValidationError) as excinfo:
+        data = valid_relationship_data.copy()
+        del data["objectUri"]
+        RelationshipCreate(**data)
+    assert "objectUri" in str(excinfo.value)
+
+    # Test missing source
+    with pytest.raises(ValidationError) as excinfo:
+        data = valid_relationship_data.copy()
+        del data["source"]
+        RelationshipCreate(**data)
+    assert "source" in str(excinfo.value)
+
+    # Test invalid subjectUri (not a URL)
+    with pytest.raises(ValidationError) as excinfo:
+        data = valid_relationship_data.copy()
+        data["subjectUri"] = "not-a-url"
+        RelationshipCreate(**data)
+    assert "subjectUri" in str(excinfo.value)
+    assert "URL scheme not permitted" in str(excinfo.value) or "invalid URL format" in str(excinfo.value)
+
+
+    # Test invalid objectUri (not a URL)
+    with pytest.raises(ValidationError) as excinfo:
+        data = valid_relationship_data.copy()
+        data["objectUri"] = "ftp://invalid.url" # HttpUrl expects http or https
+        RelationshipCreate(**data)
+    assert "objectUri" in str(excinfo.value)
+    assert "URL scheme not permitted" in str(excinfo.value)
+
+    # Test invalid predicate type (not a string)
+    with pytest.raises(ValidationError) as excinfo:
+        data = valid_relationship_data.copy()
+        data["predicate"] = 12345
+        RelationshipCreate(**data)
+    assert "predicate" in str(excinfo.value)
+    assert "Input should be a valid string" in str(excinfo.value)
+
+
+    # Test invalid source data (e.g., missing 'citation' in source)
+    with pytest.raises(ValidationError) as excinfo:
+        data = valid_relationship_data.copy()
+        invalid_source = valid_source_data.copy()
+        del invalid_source["citation"]
+        data["source"] = invalid_source
+        RelationshipCreate(**data)
+    # This will show a validation error within the 'source' field
+    assert "source" in str(excinfo.value)
+    assert "citation" in str(excinfo.value) # More specific check for missing field in submodel
+    assert "Field required" in str(excinfo.value)

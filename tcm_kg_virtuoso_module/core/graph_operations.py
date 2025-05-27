@@ -2,7 +2,7 @@
 
 from typing import Dict, List, Optional, Any, Union # 确保导入 Any 和 Union
 
-from .data_formatter import prepare_entity_sparql_insert
+from .data_formatter import prepare_entity_sparql_insert, prepare_relationship_sparql_insert
 from .sparql_executor import SparqlExecutor
 from .connection_manager import VirtuosoConnectionManager
 
@@ -114,3 +114,73 @@ def add_entity(entity_data: Dict[str, Any], conn_manager: VirtuosoConnectionMana
     
     return entity_uri # 返回生成的实体URI
                      # Return the generated entity URI
+
+
+def add_relationship(relationship_data: Dict[str, Any], conn_manager: VirtuosoConnectionManager) -> None:
+    """
+    Adds a relationship between two entities in the knowledge graph.
+
+    This function prepares and executes a SPARQL INSERT query to add the relationship.
+    It handles transactions to ensure atomicity of the data insertion.
+
+    Args:
+    - relationship_data (Dict[str, Any]): A dictionary containing relationship information. Expected keys:
+        - 'subject_uri' (str, required): The URI of the subject entity.
+        - 'predicate' (str, required): The CURIE of the predicate.
+        - 'object_uri' (str, required): The URI of the object entity.
+        - 'source_details' (Dict[str, str], required): Dictionary of parameters for create_source_metadata.
+    - conn_manager (VirtuosoConnectionManager): An instance of the connection manager for database interactions.
+
+    Raises:
+    - ValueError: If required keys are missing from relationship_data or if data types are incorrect.
+    - Exception: Re-raises any other exceptions that occur during SPARQL execution (e.g., database errors).
+    """
+
+    # 1. Data Extraction and Validation
+    required_keys = ['subject_uri', 'predicate', 'object_uri', 'source_details']
+    for key in required_keys:
+        if key not in relationship_data:
+            raise ValueError(f"Error: Missing required key '{key}' in relationship_data dictionary.")
+
+    subject_uri: str = relationship_data['subject_uri']
+    predicate: str = relationship_data['predicate']
+    object_uri: str = relationship_data['object_uri']
+    source_details: Dict[str, str] = relationship_data['source_details']
+
+    # Type validation
+    if not isinstance(subject_uri, str):
+        raise ValueError(f"Error: 'subject_uri' should be a string, but got {type(subject_uri)}.")
+    if not isinstance(predicate, str):
+        raise ValueError(f"Error: 'predicate' should be a string (CURIE), but got {type(predicate)}.")
+    if not isinstance(object_uri, str):
+        raise ValueError(f"Error: 'object_uri' should be a string, but got {type(object_uri)}.")
+    if not isinstance(source_details, dict):
+        raise ValueError(f"Error: 'source_details' should be a dictionary, but got {type(source_details)}.")
+
+    # 2. (Handled by imports) Import prepare_relationship_sparql_insert from .data_formatter
+
+    # 3. SPARQL Query Generation
+    print(f"Info: Generating SPARQL query for relationship: {subject_uri} - {predicate} - {object_uri}")
+    sparql_query = prepare_relationship_sparql_insert(
+        subject_uri=subject_uri,
+        predicate_curie=predicate,
+        object_uri=object_uri,
+        source_details=source_details
+    )
+
+    # 4. (Handled by imports) Import SparqlExecutor from .sparql_executor
+
+    # 5. Instantiate SparqlExecutor
+    executor = SparqlExecutor(conn_manager)
+
+    # 6. SPARQL Execution with Transaction Management
+    try:
+        executor.begin_transaction()
+        print(f"Info: Executing SPARQL update for relationship: {subject_uri} - {predicate} - {object_uri}")
+        executor.execute_update(sparql_query)
+        executor.commit_transaction()
+        print(f"Success: Relationship {subject_uri} - {predicate} - {object_uri} added successfully, transaction committed.")
+    except Exception as e:
+        print(f"Error: An error occurred while adding relationship {subject_uri} - {predicate} - {object_uri}. Rolling back transaction. Error details: {e}")
+        executor.rollback_transaction()
+        raise e
