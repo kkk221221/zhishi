@@ -6,10 +6,11 @@ from typing import Dict, List, Optional, Any # 确保导入 Any 以适应 entity
 from .data_formatter import prepare_entity_sparql_insert
 from .sparql_executor import SparqlExecutor
 from .connection_manager import VirtuosoConnectionManager
+from .uri_minter import mint_entity_uri
 
-def add_entity(entity_data: Dict[str, Any], conn_manager: VirtuosoConnectionManager) -> None:
+def add_entity(entity_data: Dict[str, Any], conn_manager: VirtuosoConnectionManager) -> str:
     """
-    将实体及其元数据添加到知识图谱中。
+    将实体及其元数据添加到知识图谱中，并返回新创建实体的URI。
 
     此函数通过准备并执行SPARQL INSERT查询来添加实体。
     它处理事务以确保数据插入的原子性。
@@ -24,6 +25,9 @@ def add_entity(entity_data: Dict[str, Any], conn_manager: VirtuosoConnectionMana
         - 'entity_id_args' (Optional[List[str]], 可选): 用于 mint_entity_uri 的附加标识符参数。
           默认为 None。
     - conn_manager (VirtuosoConnectionManager): 用于管理数据库连接的连接管理器实例。
+
+    返回:
+    - str: The URI of the newly created entity.
 
     抛出:
     - ValueError: 如果 entity_data 中缺少必需的键。
@@ -70,11 +74,18 @@ def add_entity(entity_data: Dict[str, Any], conn_manager: VirtuosoConnectionMana
         raise ValueError(f"错误：'entity_id_args' 应该是字符串列表或None，但得到的是 {type(entity_id_args)}。")
         # Error: 'entity_id_args' should be a list of strings or None, but got {type(entity_id_args)}.
 
+    # Generate the entity URI before preparing the SPARQL query
+    predicted_entity_uri = mint_entity_uri(
+        entity_type_name, 
+        entity_label, 
+        *(entity_id_args if entity_id_args else [])
+    )
+
     # 4. SPARQL查询生成
     # 4. SPARQL Query Generation
     # 调用 prepare_entity_sparql_insert 函数生成SPARQL查询字符串。
     # Call the prepare_entity_sparql_insert function to generate the SPARQL query string.
-    print(f"信息：正在为实体 '{entity_label}' (类型: {entity_type_name}) 生成SPARQL查询。") # Chinese info message
+    print(f"信息：正在为实体 '{entity_label}' (类型: {entity_type_name}) 生成SPARQL查询。URI 将为 {predicted_entity_uri}") # Chinese info message
     # Info: Generating SPARQL query for entity '{entity_label}' (type: {entity_type_name}).
     
     sparql_query = prepare_entity_sparql_insert(
@@ -92,29 +103,25 @@ def add_entity(entity_data: Dict[str, Any], conn_manager: VirtuosoConnectionMana
     executor = SparqlExecutor(conn_manager)
 
     try:
-        # 开始事务
-        # Begin transaction
-        executor.begin_transaction()
-        
         # 执行更新 (SPARQL INSERT)
         # Execute update (SPARQL INSERT)
         print(f"信息：正在执行实体 '{entity_label}' 的SPARQL更新。") # Chinese info message
         # Info: Executing SPARQL update for entity '{entity_label}'.
-        executor.execute_update(sparql_query)
+        executor.execute_update(sparql_query) # This now directly executes the update.
+                                            # SPARQLWrapper itself doesn't have explicit transaction commit/rollback methods
+                                            # for single queries in the same way JDBC/ODBC might.
+                                            # Each update is typically auto-committed or managed by Virtuoso settings.
         
-        # 提交事务
-        # Commit transaction
-        executor.commit_transaction()
-        print(f"成功：实体 '{entity_label}' 已成功添加，事务已提交。") # Chinese success message
-        # Success: Entity '{entity_label}' added successfully, transaction committed.
+        print(f"成功：实体 '{entity_label}' 的SPARQL更新已成功执行。URI: {predicted_entity_uri}") # Chinese success message
+        # Success: SPARQL update for entity '{entity_label}' executed successfully. URI: {predicted_entity_uri}
+        return predicted_entity_uri
 
     except Exception as e:
-        # 如果发生任何错误，回滚事务
-        # If any error occurs, roll back the transaction
-        print(f"错误：在添加实体 '{entity_label}' 过程中发生错误。正在回滚事务。错误详情: {e}") # Chinese error message
-        # Error: An error occurred while adding entity '{entity_label}'. Rolling back transaction. Error details: {e}
-        executor.rollback_transaction()
-        # 重新抛出异常，以便调用者可以处理
+        # 如果发生任何错误
+        # If any error occurs
+        print(f"错误：在添加实体 '{entity_label}' 过程中执行SPARQL更新时发生错误。错误详情: {e}") # Chinese error message
+        # Error: An error occurred while executing SPARQL update for entity '{entity_label}'. Error details: {e}
+        # No explicit rollback call needed here as SPARQLWrapper doesn't manage transactions in this way.
         # Re-raise the exception so the caller can handle it
         raise e
     # finally 块在这里不是必需的，因为连接的关闭由 VirtuosoConnectionManager 的使用者（或其上下文管理器）负责。

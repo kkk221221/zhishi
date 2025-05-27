@@ -1,57 +1,43 @@
-from typing import List, Dict, Optional
-from .connection_manager import VirtuosoConnectionManager
+from typing import List, Dict, Any, Optional
+from SPARQLWrapper import SPARQLWrapper, JSON, POST 
+
+from tcm_kg_virtuoso_module.core.connection_manager import VirtuosoConnectionManager
 
 class SparqlExecutor:
     def __init__(self, connection_manager: VirtuosoConnectionManager):
         self.connection_manager = connection_manager
-        self.connection = None # Will be fetched when needed
 
-    def _get_db_connection(self):
-        # Ensure connection is active, establish if not
-        if not self.connection:
-            self.connection = self.connection_manager.get_connection()
-        if not self.connection: # If get_connection failed (simulated)
-            raise Exception("Failed to establish database connection via ConnectionManager")
-        return self.connection
+    def _get_sparql_wrapper(self) -> SPARQLWrapper:
+        sparql_wrapper = self.connection_manager.get_sparql_wrapper_instance()
+        if not sparql_wrapper:
+            raise Exception("Failed to get SPARQLWrapper instance from ConnectionManager")
+        return sparql_wrapper
 
-    def execute_select(self, query: str, params: Optional[Dict] = None) -> List[Dict]:
-        conn = self._get_db_connection()
-        print(f"Executing SELECT query on {conn}:\n{query}")
-        # In a real scenario, use conn.execute(query) or similar and fetch results
-        # For simulation:
-        print("Query executed (simulated). Returning empty list.")
-        return []
+    def execute_select(self, query: str) -> List[Dict[str, Any]]:
+        sparql = self._get_sparql_wrapper()
+        sparql.setQuery(query)
+        sparql.setReturnFormat(JSON)
+        # Consider sparql.setMethod(POST) if queries can be large
+        try:
+            print(f"Executing SELECT query:\n{query}") # Escaped newline for subtask
+            results = sparql.queryAndConvert()
+            return results.get("results", {}).get("bindings", [])
+        except Exception as e:
+            print(f"Error executing SELECT query: {e}\nQuery:\n{query}") # Escaped newline
+            raise
 
-    def execute_insert(self, query: str, params: Optional[Dict] = None) -> None:
-        conn = self._get_db_connection()
-        print(f"Executing INSERT query on {conn}:\n{query}")
-        # In a real scenario, use conn.execute(query)
-        print("INSERT executed (simulated).")
+    def execute_update(self, query: str) -> bool:
+        sparql = self._get_sparql_wrapper()
+        sparql.setQuery(query)
+        sparql.setMethod(POST)
+        try:
+            print(f"Executing UPDATE query:\n{query}") # Escaped newline
+            sparql.query() # Executes the update
+            print(f"Update query executed successfully.")
+            return True 
+        except Exception as e:
+            print(f"Error executing UPDATE query: {e}\nQuery:\n{query}") # Escaped newline
+            raise
 
-    def execute_delete(self, query: str, params: Optional[Dict] = None) -> None:
-        conn = self._get_db_connection()
-        print(f"Executing DELETE query on {conn}:\n{query}")
-        # In a real scenario, use conn.execute(query)
-        print("DELETE executed (simulated).")
-
-    def execute_update(self, query: str, params: Optional[Dict] = None) -> None: # For DELETE/INSERT
-        conn = self._get_db_connection()
-        print(f"Executing UPDATE (DELETE/INSERT) query on {conn}:\n{query}")
-        # In a real scenario, use conn.execute(query)
-        print("UPDATE executed (simulated).")
-
-    def begin_transaction(self) -> None:
-        conn = self._get_db_connection()
-        print(f"Beginning transaction on {conn} (simulated).")
-        # In a real scenario, conn.execute("SET TRANSACTION ISOLATION LEVEL ...") or similar
-        # then conn.begin() or auto-commit off.
-
-    def commit_transaction(self) -> None:
-        conn = self._get_db_connection()
-        print(f"Committing transaction on {conn} (simulated).")
-        # In a real scenario, conn.commit()
-
-    def rollback_transaction(self) -> None:
-        conn = self._get_db_connection()
-        print(f"Rolling back transaction on {conn} (simulated).")
-        # In a real scenario, conn.rollback()
+# Transaction methods (begin_transaction, commit_transaction, rollback_transaction)
+# are removed as they don't directly map to standard SPARQLWrapper operations.

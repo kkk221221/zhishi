@@ -1,39 +1,32 @@
+from SPARQLWrapper import SPARQLWrapper, JSON, POST, BASIC, DIGEST
 from tcm_kg_virtuoso_module.config import settings
 
 class VirtuosoConnectionManager:
     def __init__(self):
-        self.host = settings.VIRTUOSO_HOST
-        self.port = settings.VIRTUOSO_PORT
+        host = settings.VIRTUOSO_HOST
+        if not host.startswith(('http://', 'https://')):
+            host = f"http://{host}" 
+            
+        self.endpoint_url = f"{host}:{settings.VIRTUOSO_PORT}/sparql"
         self.user = settings.VIRTUOSO_USER
         self.password = settings.VIRTUOSO_PASSWORD
-        self.dsn = settings.VIRTUOSO_DSN # Or construct DSN here if preferred
-        self.connection = None
 
-    def connect(self):
-        # In a real scenario, use a library like virtuoso.vstore
-        # from virtuoso.vstore import Virtuoso
-        # self.connection = Virtuoso(self.dsn, user=self.user, password=self.password)
-        # self.connection.open_connection()
-        print(f"Attempting to connect to Virtuoso: DSN={self.dsn}, User={self.user}")
-        try:
-            # Simulate connection success
-            self.connection = True # Replace with actual connection object
-            print("Successfully connected to Virtuoso (simulated).")
-        except Exception as e:
-            print(f"Error connecting to Virtuoso (simulated): {e}")
-            self.connection = None
-            raise # Or handle more gracefully
+        self.sparql = SPARQLWrapper(self.endpoint_url)
+        
+        if self.user and self.password:
+            # Using DIGEST authentication. This might need to be BASIC depending on Virtuoso setup.
+            self.sparql.setHTTPAuth(DIGEST) 
+            self.sparql.setCredentials(self.user, self.password)
+
+        print(f"VirtuosoConnectionManager initialized for endpoint: {self.endpoint_url}")
+        if self.user:
+            print(f"Using credentials for user: {self.user}")
+
+    def get_sparql_wrapper_instance(self) -> SPARQLWrapper:
+        return self.sparql
 
     def get_connection(self):
-        if not self.connection:
-            self.connect()
-        return self.connection
-
-    def close(self):
-        if self.connection:
-            # In a real scenario:
-            # self.connection.close_connection()
-            print("Closing Virtuoso connection (simulated).")
-            self.connection = None
-        else:
-            print("No active Virtuoso connection to close (simulated).")
+        # This method is kept for now for potential compatibility with SparqlExecutor,
+        # but SparqlExecutor should ideally use get_sparql_wrapper_instance().
+        print("Warning: VirtuosoConnectionManager.get_connection() called. Consider updating caller to use get_sparql_wrapper_instance().")
+        return self.sparql
