@@ -144,7 +144,7 @@ class TestDataFormatter(unittest.TestCase):
 
     def test_format_literal_with_escaping(self):
         # 测试值中包含需要转义的字符的字面量格式化
-        val_to_escape = 'text with "quotes" and \ backslash, also \n newline.'
+        val_to_escape = 'text with "quotes" and \\ backslash, also \n newline.'
         escaped_val = 'text with \\"quotes\\" and \\\\ backslash, also \\n newline.'
         self.assertEqual(format_literal(val_to_escape), f'"{escaped_val}"')
 
