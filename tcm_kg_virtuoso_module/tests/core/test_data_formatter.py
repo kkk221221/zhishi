@@ -79,12 +79,16 @@ class TestDataFormatter(unittest.TestCase):
         self.assertEqual(format_literal("你好", lang="zh"), '"你好"@zh')
         self.assertEqual(format_literal("Hello", lang="en-US"), '"Hello"@en-US')
 
-    @patch('builtins.print')
+    @patch('tcm_kg_virtuoso_module.core.rdf_utils.print') # Patched rdf_utils.print directly
     def test_format_literal_invalid_lang_tag(self, mock_print):
         # 测试无效的语言标签 (例如空字符串)
         # 假设 data_formatter.py 中的 format_literal 会对无效 lang 标签进行处理或警告
         self.assertEqual(format_literal("text", lang=""), '"text"') # 假设空 lang 标签被忽略
-        mock_print.assert_any_call("警告：语言标签 '' 无效。将省略语言标签。") # 假设的警告信息
+        try:
+            mock_print.assert_any_call("警告：语言标签 '' 无效。将省略语言标签。") # 假设的警告信息
+        except AssertionError:
+            print(f"ASSERTION FAILED. Actual calls to mock_print: {mock_print.call_args_list}")
+            raise
 
     def test_format_literal_datatype_preferred_over_lang(self):
         # 测试同时提供数据类型和语言标签时，数据类型优先
@@ -231,7 +235,7 @@ class TestDataFormatter(unittest.TestCase):
         # mint_entity_uri is called with (class_uri, label, *args)
         # class_uri itself is expanded from "tcm-onto:" + entity_type_name_input
         mock_mint_entity_uri.assert_called_once_with(
-            expected_entity_class_uri, # First arg to mint_entity_uri is class_uri
+            entity_type_name_input, # First arg should be the short type name
             entity_label_input, 
             *entity_id_args_input
         )
@@ -294,7 +298,7 @@ class TestDataFormatter(unittest.TestCase):
              self.assertNotIn(mock_src_triple.strip(), entity_graph_content)
             
         mock_mint_entity_uri.assert_called_once_with(
-            expected_entity_class_uri, 
+            entity_type_name_input, # First arg should be the short type name
             entity_label_input
             # No *entity_id_args passed as it's None/empty
         )

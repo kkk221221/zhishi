@@ -5,7 +5,7 @@ from typing import List, Tuple
 # 1. 导入必要的模块和函数
 # 1. Import necessary modules and functions
 from .uri_minter import mint_source_uri
-from .data_formatter import create_rdf_triple, format_literal # COMMON_DATATYPES 会被 format_literal 间接使用
+from .rdf_utils import create_rdf_triple, format_literal # COMMON_DATATYPES 会被 format_literal 间接使用
                                                              # COMMON_DATATYPES will be indirectly used by format_literal
 from tcm_kg_virtuoso_module.config import settings
 
