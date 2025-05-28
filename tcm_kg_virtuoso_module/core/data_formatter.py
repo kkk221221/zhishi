@@ -343,3 +343,208 @@ INSERT DATA {{
     # 步骤7: 返回完整的SPARQL查询字符串
     # Step 7: Return the complete SPARQL query string
     return sparql_query.strip()
+
+
+# --- 新增用于实体更新的SPARQL准备函数 ---
+# --- New SPARQL preparation functions for entity update ---
+
+from .source_manager import create_source_metadata # 确保导入
+from datetime import datetime # 用于修正记录中的时间戳
+
+def prepare_sparql_for_attribute_supersede(
+    entity_uri: str,
+    attributes_to_add: List[Dict[str, Any]], # 每个字典包含 'property': str (CURIE), 'value': Any, 'datatype': Optional[str]
+    source_details: Dict[str, str] # 用于 create_source_metadata
+) -> List[str]:
+    """
+    为Scenario 1（替换属性）准备SPARQL查询。
+    此函数处理 "attributes_to_add_or_update" 列表中的条目，这些条目不通过 "correction_details" 处理。
+    它首先删除指定实体和属性的所有现有三元组，然后在与新来源关联的新命名图中插入新值。
+    """
+    # 1. 导入 create_source_metadata (已在函数外处理)
+    # 2. 调用 create_source_metadata 生成新的来源信息
+    new_source_named_graph_uri, source_metadata_triples = create_source_metadata(**source_details)
+
+    # 3. 初始化SPARQL查询列表
+    sparql_queries: List[str] = []
+
+    # 4. 处理每个要添加/更新的属性
+    for attr in attributes_to_add:
+        prop_curie = attr['property']
+        prop_value = attr['value']
+        prop_datatype = attr.get('datatype')
+
+        expanded_prop_uri = _expand_curie(prop_curie, DEFAULT_PREFIXES)
+        formatted_entity_uri = format_uri(entity_uri)
+        formatted_prop_uri = format_uri(expanded_prop_uri)
+
+        # 4.e. 生成删除查询
+        delete_query = f"""
+DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {formatted_prop_uri} ?old_value . }} }}
+WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {formatted_prop_uri} ?old_value . }} }};
+"""
+        sparql_queries.append(delete_query.strip())
+
+        # 4.f. 准备新值
+        formatted_new_value: str
+        # 检查 prop_value 是否为 HttpUrl 实例或表示URI的字符串
+        # from pydantic import HttpUrl # 假设 HttpUrl 可能被传入
+        # if isinstance(prop_value, HttpUrl) or (isinstance(prop_value, str) and prop_value.startswith(("http://", "https://", "urn:"))):
+        # 为了简化，我们依赖于 request_schemas.py 中的 AttributeUpdate.value: Any 的灵活性，
+        # 并假设调用此函数前，HttpUrl 对象已转换为字符串。
+        if isinstance(prop_value, str) and prop_value.startswith(("http://", "https://", "urn:")):
+            formatted_new_value = format_uri(prop_value)
+        else:
+            formatted_new_value = format_literal(prop_value, datatype=prop_datatype)
+        
+        # 4.g. 生成插入新值的查询
+        insert_new_triple_query = f"""
+INSERT DATA {{ GRAPH <{new_source_named_graph_uri}> {{ {formatted_entity_uri} {formatted_prop_uri} {formatted_new_value} . }} }};
+"""
+        sparql_queries.append(insert_new_triple_query.strip())
+
+    # 5. 生成插入来源元数据的查询
+    if source_metadata_triples: # 仅当有元数据三元组时才添加
+        merged_source_metadata_triples_string = "\n".join(source_metadata_triples)
+        insert_source_metadata_query = f"""
+INSERT DATA {{
+{merged_source_metadata_triples_string}
+}};
+"""
+        sparql_queries.append(insert_source_metadata_query.strip())
+    
+    # 6. 返回SPARQL查询列表
+    return sparql_queries
+
+def prepare_sparql_for_attribute_correction(
+    entity_uri: str,
+    property_to_correct_curie: str, # 来自 correction_details.property_to_correct
+    new_value: Any, # 来自 attributes_to_add_or_update 中匹配的条目
+    new_value_datatype: Optional[str], # 来自 attributes_to_add_or_update 中匹配的条目
+    target_graph_uri: str, # 来自 correction_details.targetNamedGraphUri
+    source_details: Dict[str, str] # 当前PUT请求的source，用于更新目标图的元数据
+) -> List[str]:
+    """
+    为Scenario 2（在特定原始来源上下文中修正断言）准备SPARQL查询。
+    它在 target_graph_uri 中删除旧的属性值，并插入新值。
+    然后，它使用当前请求的 source_details 来更新 target_graph_uri 的来源元数据 (通过添加修正注释)。
+    """
+    # 1. 初始化SPARQL查询列表
+    sparql_queries: List[str] = []
+
+    # 2. 扩展和格式化URI
+    formatted_entity_uri = format_uri(entity_uri)
+    expanded_prop_uri = _expand_curie(property_to_correct_curie, DEFAULT_PREFIXES)
+    formatted_prop_uri = format_uri(expanded_prop_uri)
+    
+    # 3. 格式化新值
+    formatted_new_value: str
+    if isinstance(new_value, str) and new_value.startswith(("http://", "https://", "urn:")):
+        formatted_new_value = format_uri(new_value)
+    else:
+        formatted_new_value = format_literal(new_value, datatype=new_value_datatype)
+
+    # 4. 生成删除旧值的查询 (在目标图中)
+    # 使用 WITH <graph_uri> DELETE { ... } WHERE { ... } 确保操作在特定图内
+    # Virtuoso specific: DELETE DATA FROM <graph_uri> { triple_to_delete } is simpler if we know the exact old triple.
+    # However, ?old_value is more robust if the exact old value isn't known or to remove all.
+    # The `WITH <graph> DELETE ... WHERE ...` is a standard SPARQL 1.1 Update construct.
+    delete_old_value_query = f"""
+WITH <{target_graph_uri}>
+DELETE {{ {formatted_entity_uri} {formatted_prop_uri} ?old_value . }}
+WHERE {{ {formatted_entity_uri} {formatted_prop_uri} ?old_value . }};
+"""
+    sparql_queries.append(delete_old_value_query.strip())
+
+    # 5. 生成插入新值的查询 (在目标图中)
+    insert_new_value_query = f"""
+INSERT DATA {{ GRAPH <{target_graph_uri}> {{ {formatted_entity_uri} {formatted_prop_uri} {formatted_new_value} . }} }};
+"""
+    sparql_queries.append(insert_new_value_query.strip())
+
+    # 6. 生成更新目标图来源元数据的查询 (添加修正说明)
+    tcm_correctionNote_curie = "tcm-onto:correctionNote" # 假设这个CURIE在DEFAULT_PREFIXES中定义或可直接使用
+    tcm_correctionNote_uri = _expand_curie(tcm_correctionNote_curie, DEFAULT_PREFIXES)
+    
+    # 获取当前时间并格式化为ISO 8601字符串
+    correction_timestamp = datetime.now().isoformat()
+    
+    # 构建修正说明文本，可以包含更多细节
+    # 例如：从 source_details 中提取引用信息
+    citation_info = source_details.get('citation', '未提供引用') # Default if not provided
+    original_text_info = source_details.get('original_text', '未提供原始文本') # Default
+    doc_id_info = source_details.get('document_identifier', '未提供文档ID') # Default
+
+    correction_text = (
+        f"属性 {property_to_correct_curie} 于 {correction_timestamp} 被修正。"
+        f"新值为 '{str(new_value)}'。"
+        f"依据来源：引用='{citation_info}', 原始文本='{original_text_info}', 文档ID='{doc_id_info}'。"
+    )
+    
+    formatted_correction_note = format_literal(correction_text, datatype="xsd:string") # 确保是字符串类型
+
+    # 假设来源元数据是关于命名图本身的，并且存储在默认图或特定的元数据管理图中
+    # 这里我们遵循之前的模式，直接在SPARQL查询的顶层插入，这通常意味着默认图
+    # 如果 target_graph_uri 的元数据也存储在自身图中，则需要 GRAPH <target_graph_uri> { ... }
+    # 为了简化，并遵循“添加修正说明到 target_graph_uri 的元数据中”，我们假定 target_graph_uri 本身就是其元数据的主体。
+    # <target_graph_uri> <tcm-onto:correctionNote> "correction text" .
+    
+    # 注意：通常，命名图的URI自身作为主语，其元数据（如来源、创建日期等）在默认图或其他元数据图中描述。
+    # 例如：<target_graph_uri> dcterms:created "YYYY-MM-DD" .
+    # 如果要将修正说明附加到 target_graph_uri 的元数据中，SPARQL应如下：
+    # INSERT DATA { <target_graph_uri> <tcm-onto:correctionNote> "text" . }
+    # 这会将其添加到默认图。如果元数据在特定图中，则需要 GRAPH <metadata_graph_uri> { ... }
+    # 根据现有 prepare_entity_sparql_insert 和 prepare_relationship_sparql_insert 的模式，
+    # 来源元数据三元组是直接插入的，没有额外的 GRAPH 子句，这意味着它们进入默认图。
+    
+    insert_correction_note_query = f"""
+INSERT DATA {{ <{target_graph_uri}> <{tcm_correctionNote_uri}> {formatted_correction_note} . }};
+"""
+    sparql_queries.append(insert_correction_note_query.strip())
+    
+    # 7. 返回SPARQL查询列表
+    return sparql_queries
+
+def prepare_sparql_for_attribute_delete(
+    entity_uri: str,
+    attributes_to_delete: List[Dict[str, Any]] # 每个字典包含 'property': str, 'value': Optional[Any], 'datatype': Optional[str]
+) -> List[str]:
+    """
+    为 "attributes_to_delete" 列表中的条目准备SPARQL DELETE查询。
+    """
+    # 1. 初始化SPARQL查询列表
+    sparql_queries: List[str] = []
+
+    # 2. 处理每个要删除的属性
+    for attr_to_del in attributes_to_delete:
+        prop_curie = attr_to_del['property']
+        prop_value = attr_to_del.get('value') # 使用 .get() 因为 value 是可选的
+        prop_datatype = attr_to_del.get('datatype') # 使用 .get() 因为 datatype 是可选的
+
+        expanded_prop_uri = _expand_curie(prop_curie, DEFAULT_PREFIXES)
+        formatted_entity_uri = format_uri(entity_uri)
+        formatted_prop_uri = format_uri(expanded_prop_uri)
+
+        delete_query_segment: str
+        if prop_value is not None:
+            # 2.c. 如果 prop_value 存在 (删除特定值)
+            formatted_value_to_delete: str
+            if isinstance(prop_value, str) and prop_value.startswith(("http://", "https://", "urn:")):
+                formatted_value_to_delete = format_uri(prop_value)
+            else:
+                formatted_value_to_delete = format_literal(prop_value, datatype=prop_datatype)
+            
+            delete_query_segment = f"""
+DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {formatted_prop_uri} {formatted_value_to_delete} . }} }}
+WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {formatted_prop_uri} {formatted_value_to_delete} . }} }};
+"""
+        else:
+            # 2.d. 如果 prop_value 不存在 (删除所有具有该属性的值)
+            delete_query_segment = f"""
+DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {formatted_prop_uri} ?any_value . }} }}
+WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {formatted_prop_uri} ?any_value . }} }};
+"""
+        sparql_queries.append(delete_query_segment.strip())
+        
+    # 3. 返回SPARQL查询列表
+    return sparql_queries

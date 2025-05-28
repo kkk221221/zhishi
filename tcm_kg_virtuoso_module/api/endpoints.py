@@ -1,15 +1,38 @@
 # tcm_kg_virtuoso_module/api/endpoints.py
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Path
 from pydantic import HttpUrl
-from typing import List, Any, Dict, Union # Union 已添加
+from typing import List, Any, Dict, Union, Optional # Union 已添加, Optional 新增
+from urllib.parse import unquote
 
-from tcm_kg_virtuoso_module.api.request_schemas import EntityCreate, Attribute as AttributeSchema, RelationshipCreate
-from tcm_kg_virtuoso_module.core.graph_operations import add_entity, add_relationship
+from tcm_kg_virtuoso_module.api.request_schemas import (
+    EntityCreate, 
+    Attribute as AttributeSchema, 
+    RelationshipCreate,
+    EntityUpdate # 新增导入
+)
+from tcm_kg_virtuoso_module.core.graph_operations import add_entity, add_relationship, update_entity # update_entity 新增导入
 from tcm_kg_virtuoso_module.core.connection_manager import VirtuosoConnectionManager
 from tcm_kg_virtuoso_module.config.settings import get_virtuoso_connection_manager # 假设此函数后续会定义
 
 # 为这些端点定义一个路由器
 router = APIRouter()
+
+# 辅助函数：转换 EntityUpdate Pydantic 模型中的属性值
+# Helper function: Transform attribute values in EntityUpdate Pydantic model
+def _transform_update_attribute_value(value: Any) -> Any:
+    """
+    转换 EntityUpdate 模型中属性的 'value' 字段。
+    如果值为 HttpUrl，则转换为字符串。
+    其他类型按原样传递，核心层将处理字面量的具体格式化。
+    """
+    if isinstance(value, HttpUrl):
+        return str(value)
+    # 对于其他类型 (str, int, bool, List[str], List[HttpUrl] 等),
+    # 核心层的 format_literal 或 format_uri 会处理。
+    # 如果是列表，也直接传递，核心层应能处理。
+    if isinstance(value, list):
+        return [_transform_update_attribute_value(item) for item in value]
+    return value
 
 def transform_attribute_value(value: Any) -> Union[str, List[str]]:
     """将Pydantic模型中的属性值转换为add_entity所期望的格式。"""
@@ -137,4 +160,104 @@ async def create_relationship_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="创建关系时发生意外错误。"
+        )
+
+@router.put(
+    "/api/v1/tcm/graph/entities/{entity_uri_encoded}",
+    status_code=status.HTTP_200_OK, # 根据指示，成功时返回200 OK并带消息
+    summary="更新知识图谱中的现有实体",
+    response_description="确认实体已更新的消息。",
+)
+async def update_entity_endpoint(
+    entity_update_payload: EntityUpdate,
+    entity_uri_encoded: str = Path(..., title="URL编码的实体URI", description="要更新的目标实体的完整URI，经过URL编码。"),
+    conn_manager: VirtuosoConnectionManager = Depends(get_virtuoso_connection_manager),
+):
+    """
+    用于更新知识图谱中现有实体属性的端点。
+    它使用 `EntityUpdate` 模式进行请求体验证，并调用
+    `tcm_kg_virtuoso_module.core.graph_operations` 中的 `update_entity` 函数。
+    """
+    try:
+        entity_uri = unquote(entity_uri_encoded)
+
+        # 1. 准备 attributes_to_add_or_update
+        prepared_attrs_to_add_or_update: Optional[List[Dict[str, Any]]] = None
+        if entity_update_payload.attributes_to_add_or_update:
+            prepared_attrs_to_add_or_update = []
+            for attr_model in entity_update_payload.attributes_to_add_or_update:
+                processed_value = _transform_update_attribute_value(attr_model.value)
+                prepared_attrs_to_add_or_update.append({
+                    "property": attr_model.property,
+                    "value": processed_value,
+                    "datatype": attr_model.datatype
+                })
+        
+        # 2. 准备 attributes_to_delete
+        prepared_attrs_to_delete: Optional[List[Dict[str, Any]]] = None
+        if entity_update_payload.attributes_to_delete:
+            prepared_attrs_to_delete = []
+            for attr_identifier_model in entity_update_payload.attributes_to_delete:
+                processed_value = None
+                if attr_identifier_model.value is not None: # value 是 Optional[Any]
+                    processed_value = _transform_update_attribute_value(attr_identifier_model.value)
+                
+                prepared_attrs_to_delete.append({
+                    "property": attr_identifier_model.property,
+                    "value": processed_value, # 可能为 None
+                    "datatype": attr_identifier_model.datatype
+                })
+
+        # 3. 准备 source_info
+        # EntityUpdate.source 是必需的，所以 entity_update_payload.source 总会存在
+        prepared_source_info: Dict[str, str] = {
+            "citation": entity_update_payload.source.citation,
+            "original_text": entity_update_payload.source.originalText,
+            "document_identifier": entity_update_payload.source.documentIdentifier,
+            # 默认值可以由核心层或数据格式化层根据操作类型（例如，修正vs替换）决定或进一步专门化。
+            # 此处我们传递原始的API来源信息，核心层可以使用它来生成新的来源图或更新现有来源图的元数据。
+            # 为了与 create_entity_endpoint 的 source_details 保持某种程度的一致性，可以添加一些默认值，
+            # 但 update 操作的 source_type 可能不同。
+            # 核心层的 update_entity 函数现在负责处理 source_info 的具体应用。
+            # 例如，对于 supersede 操作，它将用于 create_source_metadata。
+            # 对于 correction 操作，它将用于更新目标图的元数据（例如添加 tcm-onto:correctionNote）。
+            # 根据 update_entity 函数的参数，它期望一个简单的字典。
+        }
+        # 可以在这里添加默认的 source_type 等，如果核心逻辑不处理这些：
+        # prepared_source_info["source_type"] = "APIEntityUpdate" 
+        # prepared_source_info["source_section"] = "EntityUpdate"
+        # prepared_source_info["source_subsection"] = entity_uri # 或者其他合适的
+
+
+        # 4. 准备 correction_details_info
+        prepared_correction_details: Optional[Dict[str, Any]] = None
+        if entity_update_payload.correction_details:
+            prepared_correction_details = {
+                "targetNamedGraphUri": str(entity_update_payload.correction_details.targetNamedGraphUri),
+                "property_to_correct": entity_update_payload.correction_details.property_to_correct
+            }
+            
+        # 5. 调用核心逻辑
+        update_entity(
+            entity_uri=entity_uri,
+            attributes_to_add_or_update=prepared_attrs_to_add_or_update,
+            attributes_to_delete=prepared_attrs_to_delete,
+            source_info=prepared_source_info, # 始终传递，因为它是 EntityUpdate 中的必需字段
+            correction_details_info=prepared_correction_details,
+            conn_manager=conn_manager
+        )
+        
+        return {"message": "实体已成功更新"}
+
+    except ValueError as ve:
+        # 来自 update_entity 的 ValueError (例如，数据不一致，缺失必要信息) 应为 400
+        # 或来自 unquote, HttpUrl 转换等的潜在错误
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(ve))
+    except Exception as e:
+        # 捕获实体更新过程中的其他意外错误
+        # 在实际应用中应在此处记录异常
+        print(f"实体更新过程中发生意外错误 (URI: {entity_uri_encoded}): {e}") # 用于调试
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="更新实体时发生意外错误。"
         )

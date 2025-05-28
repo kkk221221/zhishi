@@ -354,6 +354,161 @@ class TestDataFormatter(unittest.TestCase):
         # 5. Ensure mock was called correctly
         mock_create_source_metadata.assert_called_once_with(**source_details_input)
 
+    # --- 新增的实体更新相关SPARQL生成函数的测试 ---
+    # --- Tests for new entity update related SPARQL generation functions ---
+
+    @patch('tcm_kg_virtuoso_module.core.data_formatter.create_source_metadata')
+    def test_prepare_sparql_for_attribute_supersede(self, mock_create_source_metadata):
+        """测试 prepare_sparql_for_attribute_supersede 函数 (测试属性替换的SPARQL准备)"""
+        entity_uri_input = "http://example.com/entity/herb1"
+        
+        # 模拟 create_source_metadata
+        mock_new_graph_uri = "http://example.com/graph/new_source_herb1_update1"
+        mock_new_source_triples = [
+            f"<{mock_new_graph_uri}/context> <{_expand_curie('dcterms:creator', mock_DEFAULT_PREFIXES_for_test)}> \"Test User\" ."
+        ]
+        mock_create_source_metadata.return_value = (mock_new_graph_uri, mock_new_source_triples)
+
+        source_details_input = {"citation": "Supersede Source", "document_identifier": "doc_supersede_1"}
+
+        attributes_to_add = [
+            {"property": "tcm-onto:hasDescription", "value": "新的描述信息", "datatype": "xsd:string"},
+            {"property": "rdfs:seeAlso", "value": "http://example.com/entity/relatedHerb"},
+            {"property": "tcm-onto:maxDose", "value": 15} # 将测试无 datatype 的情况
+        ]
+
+        queries = prepare_sparql_for_attribute_supersede(entity_uri_input, attributes_to_add, source_details_input)
+
+        self.assertEqual(len(queries), 2 * len(attributes_to_add) + 1) # 每个属性2条 (DELETE, INSERT) + 1条来源元数据 INSERT
+
+        formatted_entity_uri = format_uri(entity_uri_input)
+
+        # 验证第一个属性 (描述)
+        prop1_uri = format_uri(_expand_curie(attributes_to_add[0]["property"], mock_DEFAULT_PREFIXES_for_test))
+        expected_delete_q1 = f"DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {prop1_uri} ?old_value . }} }} WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {prop1_uri} ?old_value . }} }};"
+        self.assertIn(expected_delete_q1.strip(), queries[0])
+        
+        formatted_val1 = format_literal(attributes_to_add[0]["value"], datatype=attributes_to_add[0]["datatype"])
+        expected_insert_q1 = f"INSERT DATA {{ GRAPH <{mock_new_graph_uri}> {{ {formatted_entity_uri} {prop1_uri} {formatted_val1} . }} }};"
+        self.assertIn(expected_insert_q1.strip(), queries[1])
+
+        # 验证第二个属性 (seeAlso - URI value)
+        prop2_uri = format_uri(_expand_curie(attributes_to_add[1]["property"], mock_DEFAULT_PREFIXES_for_test))
+        formatted_val2 = format_uri(attributes_to_add[1]["value"]) # URI值
+        expected_delete_q2 = f"DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {prop2_uri} ?old_value . }} }} WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {prop2_uri} ?old_value . }} }};"
+        self.assertIn(expected_delete_q2.strip(), queries[2])
+        expected_insert_q2 = f"INSERT DATA {{ GRAPH <{mock_new_graph_uri}> {{ {formatted_entity_uri} {prop2_uri} {formatted_val2} . }} }};"
+        self.assertIn(expected_insert_q2.strip(), queries[3])
+        
+        # 验证第三个属性 (maxDose - 无 datatype)
+        prop3_uri = format_uri(_expand_curie(attributes_to_add[2]["property"], mock_DEFAULT_PREFIXES_for_test))
+        formatted_val3 = format_literal(attributes_to_add[2]["value"]) # 无 datatype，应为普通字面量
+        expected_delete_q3 = f"DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {prop3_uri} ?old_value . }} }} WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {prop3_uri} ?old_value . }} }};"
+        self.assertIn(expected_delete_q3.strip(), queries[4])
+        expected_insert_q3 = f"INSERT DATA {{ GRAPH <{mock_new_graph_uri}> {{ {formatted_entity_uri} {prop3_uri} {formatted_val3} . }} }};"
+        self.assertIn(expected_insert_q3.strip(), queries[5])
+
+        # 验证来源元数据插入
+        expected_source_insert = f"INSERT DATA {{\n{mock_new_source_triples[0]}\n}};" # 假设只有一个元数据三元组
+        self.assertIn(expected_source_insert.strip(), queries[6])
+        
+        mock_create_source_metadata.assert_called_once_with(**source_details_input)
+
+    @patch('tcm_kg_virtuoso_module.core.data_formatter.datetime')
+    def test_prepare_sparql_for_attribute_correction(self, mock_datetime):
+        """测试 prepare_sparql_for_attribute_correction 函数 (测试属性修正的SPARQL准备)"""
+        # 模拟 datetime.now()
+        mock_now = MagicMock()
+        mock_now.isoformat.return_value = "2023-10-26T10:00:00"
+        mock_datetime.now.return_value = mock_now
+
+        entity_uri_input = "http://example.com/entity/herb2"
+        property_to_correct_curie_input = "tcm-onto:hasDescription"
+        new_value_input = "修正后的描述信息"
+        new_value_datatype_input = "xsd:string"
+        target_graph_uri_input = "http://example.com/graph/original_source_herb2"
+        source_details_input = {
+            "citation": "Correction Source Citation", 
+            "original_text": "Correction original text",
+            "document_identifier": "doc_correction_1"
+        }
+
+        queries = prepare_sparql_for_attribute_correction(
+            entity_uri_input, property_to_correct_curie_input, new_value_input,
+            new_value_datatype_input, target_graph_uri_input, source_details_input
+        )
+        
+        self.assertEqual(len(queries), 3) # DELETE old, INSERT new, INSERT correction note
+
+        formatted_entity_uri = format_uri(entity_uri_input)
+        prop_uri = format_uri(_expand_curie(property_to_correct_curie_input, mock_DEFAULT_PREFIXES_for_test))
+
+        # 验证删除旧值
+        expected_delete_q = f"WITH <{target_graph_uri_input}> DELETE {{ {formatted_entity_uri} {prop_uri} ?old_value . }} WHERE {{ {formatted_entity_uri} {prop_uri} ?old_value . }};"
+        self.assertIn(expected_delete_q.strip(), queries[0])
+
+        # 验证插入新值
+        formatted_new_val = format_literal(new_value_input, datatype=new_value_datatype_input)
+        expected_insert_new_q = f"INSERT DATA {{ GRAPH <{target_graph_uri_input}> {{ {formatted_entity_uri} {prop_uri} {formatted_new_val} . }} }};"
+        self.assertIn(expected_insert_new_q.strip(), queries[1])
+
+        # 验证修正笔记
+        correction_note_prop_uri = format_uri(_expand_curie("tcm-onto:correctionNote", mock_DEFAULT_PREFIXES_for_test))
+        # 修正笔记的文本内容会比较复杂，这里只检查关键部分
+        self.assertTrue(queries[2].startswith(f"INSERT DATA {{ <{target_graph_uri_input}> <{correction_note_prop_uri}> "))
+        self.assertIn("修正后的描述信息", queries[2]) # 新值
+        self.assertIn("2023-10-26T10:00:00", queries[2]) # 时间戳
+        self.assertIn(source_details_input["citation"], queries[2]) # 来源引用
+        self.assertTrue(queries[2].endswith(" . }};"))
+
+    def test_prepare_sparql_for_attribute_delete(self):
+        """测试 prepare_sparql_for_attribute_delete 函数 (测试属性删除的SPARQL准备)"""
+        entity_uri_input = "http://example.com/entity/herb3"
+        
+        # 情况1: 删除特定属性（无值）
+        attrs_to_delete_1 = [{"property": "tcm-onto:toBeRemovedProperty"}]
+        queries1 = prepare_sparql_for_attribute_delete(entity_uri_input, attrs_to_delete_1)
+        self.assertEqual(len(queries1), 1)
+        formatted_entity_uri = format_uri(entity_uri_input)
+        prop1_uri = format_uri(_expand_curie(attrs_to_delete_1[0]["property"], mock_DEFAULT_PREFIXES_for_test))
+        expected_q1 = f"DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {prop1_uri} ?any_value . }} }} WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {prop1_uri} ?any_value . }} }};"
+        self.assertIn(expected_q1.strip(), queries1[0])
+
+        # 情况2: 删除特定属性-值对 (字面量)
+        attrs_to_delete_2 = [{"property": "tcm-onto:oldName", "value": "旧名称", "datatype": "xsd:string"}]
+        queries2 = prepare_sparql_for_attribute_delete(entity_uri_input, attrs_to_delete_2)
+        self.assertEqual(len(queries2), 1)
+        prop2_uri = format_uri(_expand_curie(attrs_to_delete_2[0]["property"], mock_DEFAULT_PREFIXES_for_test))
+        val2_formatted = format_literal(attrs_to_delete_2[0]["value"], datatype=attrs_to_delete_2[0]["datatype"])
+        expected_q2 = f"DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {prop2_uri} {val2_formatted} . }} }} WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {prop2_uri} {val2_formatted} . }} }};"
+        self.assertIn(expected_q2.strip(), queries2[0])
+
+        # 情况3: 删除特定属性-值对 (URI)
+        attrs_to_delete_3 = [{"property": "rdfs:seeAlso", "value": "http://example.com/oldLink"}]
+        queries3 = prepare_sparql_for_attribute_delete(entity_uri_input, attrs_to_delete_3)
+        self.assertEqual(len(queries3), 1)
+        prop3_uri = format_uri(_expand_curie(attrs_to_delete_3[0]["property"], mock_DEFAULT_PREFIXES_for_test))
+        val3_formatted = format_uri(attrs_to_delete_3[0]["value"])
+        expected_q3 = f"DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {prop3_uri} {val3_formatted} . }} }} WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {prop3_uri} {val3_formatted} . }} }};"
+        self.assertIn(expected_q3.strip(), queries3[0])
+
+        # 情况4: 混合删除
+        attrs_to_delete_4 = [
+            {"property": "tcm-onto:anotherProperty"},
+            {"property": "tcm-onto:specificValue", "value": 123} # 无数据类型
+        ]
+        queries4 = prepare_sparql_for_attribute_delete(entity_uri_input, attrs_to_delete_4)
+        self.assertEqual(len(queries4), 2)
+        
+        prop4a_uri = format_uri(_expand_curie(attrs_to_delete_4[0]["property"], mock_DEFAULT_PREFIXES_for_test))
+        expected_q4a = f"DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {prop4a_uri} ?any_value . }} }} WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {prop4a_uri} ?any_value . }} }};"
+        self.assertIn(expected_q4a.strip(), queries4[0])
+
+        prop4b_uri = format_uri(_expand_curie(attrs_to_delete_4[1]["property"], mock_DEFAULT_PREFIXES_for_test))
+        val4b_formatted = format_literal(attrs_to_delete_4[1]["value"]) # 无数据类型
+        expected_q4b = f"DELETE {{ GRAPH ?g {{ {formatted_entity_uri} {prop4b_uri} {val4b_formatted} . }} }} WHERE  {{ GRAPH ?g {{ {formatted_entity_uri} {prop4b_uri} {val4b_formatted} . }} }};"
+        self.assertIn(expected_q4b.strip(), queries4[1])
+
 
 if __name__ == '__main__':
     unittest.main(argv=['first-arg-is-ignored'], exit=False)

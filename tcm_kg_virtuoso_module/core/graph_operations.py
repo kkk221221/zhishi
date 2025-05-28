@@ -160,7 +160,7 @@ def add_relationship(relationship_data: Dict[str, Any], conn_manager: VirtuosoCo
     # 2. (Handled by imports) Import prepare_relationship_sparql_insert from .data_formatter
 
     # 3. SPARQL Query Generation
-    print(f"Info: Generating SPARQL query for relationship: {subject_uri} - {predicate} - {object_uri}")
+    print(f"信息：正在为关系 {subject_uri} - {predicate} - {object_uri} 生成SPARQL查询。") # Chinese print
     sparql_query = prepare_relationship_sparql_insert(
         subject_uri=subject_uri,
         predicate_curie=predicate,
@@ -176,11 +176,148 @@ def add_relationship(relationship_data: Dict[str, Any], conn_manager: VirtuosoCo
     # 6. SPARQL Execution with Transaction Management
     try:
         executor.begin_transaction()
-        print(f"Info: Executing SPARQL update for relationship: {subject_uri} - {predicate} - {object_uri}")
+        print(f"信息：正在执行关系 {subject_uri} - {predicate} - {object_uri} 的SPARQL更新。") # Chinese print
         executor.execute_update(sparql_query)
         executor.commit_transaction()
-        print(f"Success: Relationship {subject_uri} - {predicate} - {object_uri} added successfully, transaction committed.")
+        print(f"成功：关系 {subject_uri} - {predicate} - {object_uri} 已成功添加，事务已提交。") # Chinese print
     except Exception as e:
-        print(f"Error: An error occurred while adding relationship {subject_uri} - {predicate} - {object_uri}. Rolling back transaction. Error details: {e}")
+        print(f"错误：在添加关系 {subject_uri} - {predicate} - {object_uri} 过程中发生错误。正在回滚事务。错误详情: {e}") # Chinese print
         executor.rollback_transaction()
         raise e
+
+# --- 新增用于实体更新的函数 ---
+# --- New function for entity update ---
+from .data_formatter import (
+    prepare_sparql_for_attribute_supersede,
+    prepare_sparql_for_attribute_correction,
+    prepare_sparql_for_attribute_delete
+)
+
+def update_entity(
+    entity_uri: str,
+    attributes_to_add_or_update: Optional[List[Dict[str, Any]]] = None,
+    attributes_to_delete: Optional[List[Dict[str, Any]]] = None,
+    source_info: Optional[Dict[str, str]] = None, 
+    correction_details_info: Optional[Dict[str, Any]] = None, 
+    conn_manager: VirtuosoConnectionManager
+) -> None:
+    """
+    更新指定实体的属性。
+    此函数根据提供的参数，协调对实体属性的添加、更新（替换或修正）和删除操作。
+    所有数据库操作都在单个事务中执行。
+
+    参数:
+    - entity_uri (str): 要更新的实体的完整URI。
+    - attributes_to_add_or_update (Optional[List[Dict[str, Any]]]): 要添加或更新的属性列表。
+      每个字典应包含 'property' (str), 'value' (Any), Optional 'datatype' (str)。
+    - attributes_to_delete (Optional[List[Dict[str, Any]]]): 要删除的属性列表。
+      每个字典应包含 'property' (str), Optional 'value' (Any), Optional 'datatype' (str)。
+    - source_info (Optional[Dict[str, str]]): 新属性或替换属性的来源信息。
+      对应于API请求中的 EntityUpdate.source。
+    - correction_details_info (Optional[Dict[str, Any]]]): 修正操作的详细信息。
+      对应于API请求中的 EntityUpdate.correction_details。包含 'targetNamedGraphUri' 和 'property_to_correct'。
+    - conn_manager (VirtuosoConnectionManager): 用于管理数据库连接的连接管理器实例。
+
+    抛出:
+    - ValueError: 如果输入数据不一致或缺少执行操作所必需的信息 (例如，Scenario 1缺少source_info)。
+    - Exception: 如果在SPARQL执行过程中发生任何其他错误 (例如数据库错误)，异常将被重新抛出。
+    """
+    
+    # 1. 初始化一个空列表 all_sparql_queries 来收集所有需要执行的SPARQL语句。
+    all_sparql_queries: List[str] = []
+
+    # 确保传入的列表参数如果为None，则视为空列表，以便于后续处理
+    if attributes_to_add_or_update is None:
+        attributes_to_add_or_update = []
+    if attributes_to_delete is None:
+        attributes_to_delete = []
+
+    # 2. 处理属性删除 (attributes_to_delete):
+    if attributes_to_delete:
+        print(f"信息：正在为实体 <{entity_uri}> 准备属性删除查询。")
+        delete_queries = prepare_sparql_for_attribute_delete(entity_uri, attributes_to_delete)
+        all_sparql_queries.extend(delete_queries)
+        print(f"信息：已为属性删除生成 {len(delete_queries)} 条查询。")
+
+    # 3. 处理属性添加/更新 (attributes_to_add_or_update):
+    # 创建一个副本用于处理，因为我们可能会从中移除条目
+    remaining_attributes_to_add_or_update = list(attributes_to_add_or_update) # 使用 list() 创建副本
+
+    if attributes_to_add_or_update: # 检查原始列表是否非空
+        # 检查是否为 Scenario 2 (修正):
+        if correction_details_info and correction_details_info.get('property_to_correct') and correction_details_info.get('targetNamedGraphUri'):
+            prop_to_correct_curie = correction_details_info['property_to_correct']
+            target_graph = str(correction_details_info['targetNamedGraphUri']) # 确保 HttpUrl 转为 str
+
+            attr_for_correction = None
+            # 在 remaining_attributes_to_add_or_update 中查找匹配的属性
+            # 注意：我们应该迭代副本，并从副本中移除
+            temp_remaining_list = []
+            found_correction_attr = False
+            for attr_dict in remaining_attributes_to_add_or_update:
+                if attr_dict.get('property') == prop_to_correct_curie and not found_correction_attr:
+                    attr_for_correction = attr_dict
+                    found_correction_attr = True # 标记已找到，不再将后续匹配项视为修正（如果有多个）
+                    # 不立即从迭代中的列表移除，而是在构建新列表时跳过它
+                else:
+                    temp_remaining_list.append(attr_dict)
+            
+            remaining_attributes_to_add_or_update = temp_remaining_list # 更新为移除了修正属性的列表
+
+            if attr_for_correction:
+                print(f"信息：正在为实体 <{entity_uri}> 准备属性修正查询（Scenario 2）。")
+                if not source_info:
+                    # Scenario 2 (修正) 也需要 source_info 来记录修正操作的来源
+                    raise ValueError("错误：修正操作 (Scenario 2) 需要提供 'source_info' 以记录修正的来源。")
+
+                correction_queries = prepare_sparql_for_attribute_correction(
+                    entity_uri=entity_uri,
+                    property_to_correct_curie=prop_to_correct_curie,
+                    new_value=attr_for_correction['value'],
+                    new_value_datatype=attr_for_correction.get('datatype'),
+                    target_graph_uri=target_graph,
+                    source_details=source_info  # 使用顶层 source_info 作为修正操作的来源
+                )
+                all_sparql_queries.extend(correction_queries)
+                print(f"信息：已为属性修正生成 {len(correction_queries)} 条查询。")
+            elif prop_to_correct_curie: # correction_details_info 提供了 property_to_correct，但列表中没有
+                raise ValueError(
+                    f"错误：修正操作指定了属性 '{prop_to_correct_curie}'，"
+                    f"但在 'attributes_to_add_or_update' 列表中未找到该属性的新值。"
+                )
+        
+        # 处理剩余的 Scenario 1 (替换/添加):
+        if remaining_attributes_to_add_or_update: # 如果处理完Scenario 2后列表仍不为空
+            print(f"信息：正在为实体 <{entity_uri}> 准备属性替换/添加查询（Scenario 1）。")
+            if not source_info:
+                raise ValueError("错误：属性添加/更新操作 (Scenario 1) 需要 'source_info' 来创建新的命名图。")
+            
+            supersede_queries = prepare_sparql_for_attribute_supersede(
+                entity_uri, 
+                remaining_attributes_to_add_or_update, # 传递已移除修正属性的列表
+                source_info
+            )
+            all_sparql_queries.extend(supersede_queries)
+            print(f"信息：已为属性替换/添加生成 {len(supersede_queries)} 条查询。")
+
+    # 4. 执行SPARQL查询 (事务处理):
+    if not all_sparql_queries:
+        print(f"信息：实体 <{entity_uri}> 无更新操作需要执行。")
+        return
+
+    executor = SparqlExecutor(conn_manager)
+    try:
+        print(f"信息：开始为实体 <{entity_uri}> 执行更新事务，共 {len(all_sparql_queries)} 条查询。")
+        executor.begin_transaction()
+        for i, sparql_query in enumerate(all_sparql_queries):
+            print(f"信息：正在执行查询 {i+1}/{len(all_sparql_queries)}: \n{sparql_query[:200]}...") # 打印部分查询以供调试
+            executor.execute_update(sparql_query)
+        executor.commit_transaction()
+        print(f"成功：实体 <{entity_uri}> 的更新事务已成功提交。")
+    except Exception as e:
+        print(f"错误：在为实体 <{entity_uri}> 执行更新事务过程中发生错误。正在回滚事务。错误详情: {e}")
+        executor.rollback_transaction()
+        raise e
+    finally:
+        # 可以在这里添加额外的清理逻辑，如果需要的话
+        pass
