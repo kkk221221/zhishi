@@ -1,0 +1,8 @@
+{"name": "赤芍", "properties": ["清热凉血", "活血祛瘀"], "id": "YC002"}
+{"name": "炒白术", "properties": ["安神益智", "祛痰开窍"], "id": "YC001", "notes": "修订版"}
+{"name": "当归", "properties": ["补血活血"], "id": "YC002"}
+{"name": "炒白术", "properties": ["安神益智", "祛痰开窍"], "id": "YC001", "notes": "修订版"}
+{"name": "炒白术", "properties": ["安神益智", "祛痰开窍"], "notes": "修订版", "id": "YC001"}
+{"name": "炒白术", "properties": ["利水渗湿"], "id": "YC001"}
+{"name": "泽泻", "properties": ["利水泄热"], "id": "YC002"}
+{"name": "炒白术", "properties": ["健脾益气"], "id": "YC001"}
