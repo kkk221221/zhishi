@@ -67,35 +67,23 @@ def format_literal(value, datatype: str = None, lang: str = None) -> str:
     Formats an RDF literal for SPARQL using standard short double-quoted strings ("...")
     with N-Triples style escaping, including \\uXXXX for non-ASCII characters.
     """
-    s_value = str(value)  # Ensure input is a string
-
+    s_value = str(value)
     escaped_chars = []
     for char_val in s_value:
-        char_ord = ord(char_val)
-        if char_val == '\\':
-            escaped_chars.append("\\\\")
-        elif char_val == '"':
-            escaped_chars.append('\\"')
-        elif char_val == '\n':
-            escaped_chars.append("\\n")
-        elif char_val == '\r':
-            escaped_chars.append("\\r")
-        elif char_val == '\t':
-            escaped_chars.append("\\t")
-        # Note: N-Triples also escapes \b and \f, but they are less common in typical text.
-        # You can add them here if necessary:
-        # elif char_val == '\b':
-        #     escaped_chars.append("\\b")
-        # elif char_val == '\f':
-        #     escaped_chars.append("\\f")
-        elif 32 <= char_ord <= 126:  # Printable ASCII characters (excluding \ and ")
+        if char_val == '\\':  # If the character in s_value is a single backslash
+            escaped_chars.append("\\\\")  # Append two backslashes to escaped_chars (content will have \\)
+        elif char_val == '"':  # If the character in s_value is a double quote
+            escaped_chars.append("\\\"")  # Append backslash and quote to escaped_chars (content will have \")
+        elif char_val == '\n':  # If the character in s_value is a newline character (0x0A)
+            escaped_chars.append("\\n")   # Append the two characters backslash and 'n' (content will have \n)
+        elif char_val == '\r':  # If the character in s_value is a carriage return (0x0D)
+            escaped_chars.append("\\r")   # Append the two characters backslash and 'r' (content will have \r)
+        elif char_val == '\t':  # If the character in s_value is a tab (0x09)
+            escaped_chars.append("\\t")   # Append the two characters backslash and 't' (content will have \t)
+        else:
+            # For all other characters (including multi-byte UTF-8 like '甘' and printable ASCII not handled above),
+            # append them as they are.
             escaped_chars.append(char_val)
-        else:  # Non-printable ASCII or any non-ASCII (Unicode) character
-            if char_ord > 0xFFFF:  # Supplementary characters
-                escaped_chars.append(f"\\U{char_ord:08x}")
-            else:  # Basic Multilingual Plane
-                escaped_chars.append(f"\\u{char_ord:04x}")
-
     content = "".join(escaped_chars)
 
     # Construct the final literal string
