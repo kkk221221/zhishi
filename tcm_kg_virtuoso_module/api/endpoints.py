@@ -46,15 +46,18 @@ def transform_attribute_value(value: Any) -> Union[str, List[str]]:
     return str(value) # 默认为字符串转换
 
 @router.post(
-    "/api/v1/tcm/graph/entities", # 保持路径为英文，符合API路径命名常规
+    "/entities", # 保持路径为英文，符合API路径命名常规
+
     status_code=status.HTTP_201_CREATED,
     summary="在知识图谱中创建一个新实体", # 摘要使用中文
     response_description="新创建实体的URI。", # 响应描述使用中文
 )
+
 async def create_entity_endpoint(
     entity_data: EntityCreate,
     conn_manager: VirtuosoConnectionManager = Depends(get_virtuoso_connection_manager),
 ):
+    print("--- create_entity_endpoint CALLED ---")
     """
     用于在知识图谱中创建新实体的端点。
     它使用 `EntityCreate` 模式进行请求体验证，并调用
@@ -110,7 +113,7 @@ async def create_entity_endpoint(
         )
 
 @router.post(
-    "/api/v1/tcm/graph/relationships",
+    "/relationships",
     status_code=status.HTTP_201_CREATED,
     summary="在知识图谱中添加一个新的关系",
     response_description="确认关系已添加的消息。",
@@ -163,7 +166,7 @@ async def create_relationship_endpoint(
         )
 
 @router.put(
-    "/api/v1/tcm/graph/entities/{entity_uri_encoded}",
+    "/entities/{entity_uri_encoded}",
     status_code=status.HTTP_200_OK, # 根据指示，成功时返回200 OK并带消息
     summary="更新知识图谱中的现有实体",
     response_description="确认实体已更新的消息。",

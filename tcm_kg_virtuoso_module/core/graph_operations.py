@@ -195,11 +195,12 @@ from .data_formatter import (
 
 def update_entity(
     entity_uri: str,
+conn_manager: VirtuosoConnectionManager,
     attributes_to_add_or_update: Optional[List[Dict[str, Any]]] = None,
     attributes_to_delete: Optional[List[Dict[str, Any]]] = None,
     source_info: Optional[Dict[str, str]] = None, 
     correction_details_info: Optional[Dict[str, Any]] = None, 
-    conn_manager: VirtuosoConnectionManager
+
 ) -> None:
     """
     更新指定实体的属性。

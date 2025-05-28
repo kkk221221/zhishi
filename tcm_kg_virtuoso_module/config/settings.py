@@ -40,15 +40,27 @@ def get_settings() -> Settings:
 
 # 用于FastAPI依赖注入的连接管理器获取函数
 # Connection manager getter function for FastAPI dependency injection
-def get_virtuoso_connection_manager() -> VirtuosoConnectionManager:
-    settings = get_settings()
-    return VirtuosoConnectionManager(
-        host=settings.virtuoso_host,
-        port=settings.virtuoso_port,
-        user=settings.virtuoso_user,
-        password=settings.virtuoso_password,
-        default_graph_uri=settings.virtuoso_graph_uri
+def get_virtuoso_connection_manager(): # Removed -> VirtuosoConnectionManager type hint for generator
+    current_settings = get_settings() # get_settings is cached
+    manager = VirtuosoConnectionManager(
+        host=current_settings.virtuoso_host,
+        port=current_settings.virtuoso_port,
+        user=current_settings.virtuoso_user,
+        password=current_settings.virtuoso_password,
+        default_graph_uri=current_settings.virtuoso_graph_uri
     )
-
+    try:
+        print("正在尝试连接依赖关系中的管理器。。。") # Diagnostic print
+        manager.connect() # Connect here
+        print("管理器以依赖关系连接。") # Diagnostic print
+        yield manager     # Yield the connected manager
+    except Exception as e:
+        print(f"Error during connection in dependency: {e}") # Diagnostic print for connection error
+        # Optionally, re-raise or handle as appropriate for your app's error strategy
+        raise
+    finally:
+        print("Disconnecting manager in dependency finally block...") # Diagnostic print
+        manager.disconnect() # Disconnect when the request is done
+        print("Manager disconnected in dependency.") # Diagnostic print
 # 如果需要，可以在这里添加更多的配置，比如JWT密钥、数据库URL等
 # More configurations can be added here if needed, such as JWT keys, database URLs, etc.

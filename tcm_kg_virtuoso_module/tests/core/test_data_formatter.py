@@ -11,7 +11,11 @@ from tcm_kg_virtuoso_module.core.data_formatter import (
     _expand_curie, 
     prepare_entity_sparql_insert,
     prepare_relationship_sparql_insert, # 导入 prepare_relationship_sparql_insert
-    COMMON_DATATYPES
+    COMMON_DATATYPES,
+
+prepare_sparql_for_attribute_supersede,
+prepare_sparql_for_attribute_correction,
+prepare_sparql_for_attribute_delete
 )
 from tcm_kg_virtuoso_module.config import settings # 用于访问真实的 DEFAULT_PREFIXES
 

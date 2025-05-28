@@ -1452,7 +1452,7 @@ def test_update_entity_success_full_payload(mock_core_update_entity):
         {"property": "tcm-onto:description", "value": "新的描述", "datatype": "xsd:string"},
         {"property": "rdfs:seeAlso", "value": "http://example.com/new_link"} # HttpUrl 转为 str
     ]
-    self.assertListEqual(call_args["attributes_to_add_or_update"], expected_add_update)
+    assert call_args["attributes_to_add_or_update"] == expected_add_update
 
 
     # 验证 attributes_to_delete 的转换
@@ -1461,12 +1461,12 @@ def test_update_entity_success_full_payload(mock_core_update_entity):
         {"property": "tcm-onto:oldProperty", "value": "旧的值", "datatype": None},
         {"property": "tcm-onto:anotherOldProperty", "value": None, "datatype": None}
     ]
-    self.assertListEqual(call_args["attributes_to_delete"], expected_delete)
+    assert call_args["attributes_to_delete"] == expected_delete
 
     # 验证 source_info
     # Verify source_info
     expected_source_info = payload["source"]
-    self.assertDictEqual(call_args["source_info"], expected_source_info)
+    assert call_args["source_info"] == expected_source_info
 
     # 验证 correction_details_info
     # Verify correction_details_info
@@ -1474,7 +1474,7 @@ def test_update_entity_success_full_payload(mock_core_update_entity):
         "targetNamedGraphUri": "http://example.com/graph/original_data_graph", # HttpUrl 转为 str
         "property_to_correct": "tcm-onto:description"
     }
-    self.assertDictEqual(call_args["correction_details_info"], expected_correction_details)
+    assert call_args["correction_details_info"] == expected_correction_details
 
 @patch("tcm_kg_virtuoso_module.api.endpoints.update_entity")
 def test_update_entity_minimal_payload(mock_core_update_entity):

@@ -17,10 +17,11 @@ app = FastAPI(
 @app.on_event("startup")
 async def startup_event():
     # 例如：初始化数据库连接池、加载机器学习模型等
-    # For example: initialize database connection pool, load machine learning models, etc.
     print("应用程序启动...") # Chinese message
     get_settings() # 确保设置在启动时被加载和缓存
-                   # Ensure settings are loaded and cached on startup
+    print("Registered routes:")
+    for route in app.routes:
+        print(f"Path: {route.path}, Name: {route.name}, Methods: {getattr(route, 'methods', None)}")
 
 @app.on_event("shutdown")
 async def shutdown_event():

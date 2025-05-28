@@ -141,7 +141,7 @@ def test_attribute_model_edge_cases():
     assert attr_empty_list.value == []
 
     # Test with non-http URL (should be fine as HttpUrl validates protocol)
-    with pytest.raises(ValidationError,match="URL scheme not permitted"):  # Pydantic v2 raises error for non-http/https
+    with pytest.raises(ValidationError, match="URL scheme should be 'http' or 'https'"):
         HttpUrl("ftp://example.com")
 
 
@@ -233,7 +233,8 @@ def test_relationship_create_model():
         data["subjectUri"] = "not-a-url"
         RelationshipCreate(**data)
     assert "subjectUri" in str(excinfo.value)
-    assert "URL scheme not permitted" in str(excinfo.value) or "invalid URL format" in str(excinfo.value)
+    error_str = str(excinfo.value)
+    assert "Input should be a valid URL" in error_str or "url_parsing" in error_str
 
 
     # Test invalid objectUri (not a URL)
@@ -242,7 +243,7 @@ def test_relationship_create_model():
         data["objectUri"] = "ftp://invalid.url" # HttpUrl expects http or https
         RelationshipCreate(**data)
     assert "objectUri" in str(excinfo.value)
-    assert "URL scheme not permitted" in str(excinfo.value)
+    assert "URL scheme should be 'http' or 'https'" in str(excinfo.value)
 
     # Test invalid predicate type (not a string)
     with pytest.raises(ValidationError) as excinfo:
@@ -344,12 +345,12 @@ def test_correction_details_model():
     # 缺少 targetNamedGraphUri (Missing targetNamedGraphUri)
     with pytest.raises(ValidationError) as excinfo:
         CorrectionDetails(property_to_correct="tcm-onto:hasError")
-    assert "targetNamedGraphUri" in str(excinfo.value).lower()
+    assert "targetnamedgraphuri" in str(excinfo.value).lower() # CORRECTED
 
     # targetNamedGraphUri 不是有效的URL (targetNamedGraphUri is not a valid URL)
     with pytest.raises(ValidationError) as excinfo:
         CorrectionDetails(targetNamedGraphUri="不是一个URL", property_to_correct="tcm-onto:hasError")
-    assert "targetNamedGraphUri" in str(excinfo.value).lower()
+    assert "targetnamedgraphuri" in str(excinfo.value).lower() # CORRECTED
     assert "url" in str(excinfo.value).lower() # 提示URL相关错误
                                              # Hint URL related error
 
@@ -362,12 +363,12 @@ def test_correction_details_model():
 def test_entity_update_model():
     """测试 EntityUpdate Pydantic 模型 (测试实体更新模型)"""
     valid_source_data = {"citation": "新来源", "originalText": "新文本", "documentIdentifier": "new_doc_1"}
-    
+
     # 仅包含 source (Only source provided)
     update_minimal = EntityUpdate(source=valid_source_data)
     assert update_minimal.source.citation == "新来源"
-    assert update_minimal.attributes_to_add_or_update is None # 验证默认值为 None
-                                                            # Verify default value is None
+    assert update_minimal.attributes_to_add_or_update is None  # 验证默认值为 None
+    # Verify default value is None
     assert update_minimal.attributes_to_delete is None
     assert update_minimal.correction_details is None
 
@@ -404,26 +405,27 @@ def test_entity_update_model():
 
     # 'attributes_to_add_or_update' 中包含无效的 AttributeUpdate (Invalid AttributeUpdate in 'attributes_to_add_or_update')
     with pytest.raises(ValidationError) as excinfo:
-        EntityUpdate(attributes_to_add_or_update=[{"value_typo": "错误的值"}], source=valid_source_data) # 'value_typo' 而不是 'value'，且缺少 'property'
-                                                                                                   # 'value_typo' instead of 'value', and missing 'property'
-    assert "attributes_to_add_or_update" in str(excinfo.value).lower() # 错误发生在列表的元素中
-                                                                    # Error occurs in the elements of the list
-    assert "property" in str(excinfo.value).lower() # 具体的错误是 AttributeUpdate 缺少 property
-                                                 # The specific error is AttributeUpdate missing property
+        EntityUpdate(attributes_to_add_or_update=[{"value_typo": "错误的值"}],
+                     source=valid_source_data)  # 'value_typo' 而不是 'value'，且缺少 'property'
+        # 'value_typo' instead of 'value', and missing 'property'
+    assert "attributes_to_add_or_update" in str(excinfo.value).lower()  # 错误发生在列表的元素中
+    # Error occurs in the elements of the list
+    assert "property" in str(excinfo.value).lower()  # 具体的错误是 AttributeUpdate 缺少 property
+    # The specific error is AttributeUpdate missing property
 
     # 'attributes_to_delete' 中包含无效的 AttributeIdentifier (Invalid AttributeIdentifier in 'attributes_to_delete')
     with pytest.raises(ValidationError) as excinfo:
-        EntityUpdate(attributes_to_delete=[{"value_only": "仅有值"}], source=valid_source_data) # 缺少 'property'
-                                                                                             # Missing 'property'
+        EntityUpdate(attributes_to_delete=[{"value_only": "仅有值"}], source=valid_source_data)  # 缺少 'property'
+        # Missing 'property'
     assert "attributes_to_delete" in str(excinfo.value).lower()
     assert "property" in str(excinfo.value).lower()
 
     # 'correction_details' 中包含无效的 CorrectionDetails (Invalid CorrectionDetails in 'correction_details')
     with pytest.raises(ValidationError) as excinfo:
-        EntityUpdate(correction_details={"targetNamedGraphUri_typo": "错误的URI"}, source=valid_source_data) # 字段名错误
-                                                                                                           # Incorrect field name
+        EntityUpdate(correction_details={"targetNamedGraphUri_typo": "错误的URI"}, source=valid_source_data)  # 字段名错误
+        # Incorrect field name
     assert "correction_details" in str(excinfo.value).lower()
-    assert "targetNamedGraphUri" in str(excinfo.value).lower() # CorrectionDetails 缺少 targetNamedGraphUri
-                                                              # CorrectionDetails missing targetNamedGraphUri
-    assert "property_to_correct" in str(excinfo.value).lower() # CorrectionDetails 缺少 property_to_correct
-                                                               # CorrectionDetails missing property_to_correct
+    assert "targetnamedgraphuri" in str(excinfo.value).lower()  # CORRECTED # CorrectionDetails 缺少 targetNamedGraphUri
+    # CorrectionDetails missing targetNamedGraphUri
+    assert "property_to_correct" in str(excinfo.value).lower()  # CorrectionDetails 缺少 property_to_correct
+    # CorrectionDetails missing property_to_correct
