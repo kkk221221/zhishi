@@ -64,7 +64,7 @@ def cleanup_test_data(executor: SparqlExecutor, source_graph_uri: str):
 
         print(f"INFO: Attempting to delete metadata for source graph: <{source_graph_uri}>")
         delete_metadata_query = f"""
-                    SPARQL DELETE FROM <{CONFIG.virtuoso_graph_uri}>
+                    DELETE FROM <{CONFIG.virtuoso_graph_uri}>
                     WHERE {{
                         <{source_graph_uri}> ?p ?o .
                     }}
@@ -111,7 +111,7 @@ def check_entity_exists(executor: SparqlExecutor, entity_uri: str, label: str, a
     """
     print(f"DEBUG: Type query: {type_query}")
     result = executor.execute_select(type_query)
-    assert result and result[0].get('ASK') is True, f"Type <{type_uri}> for entity <{entity_uri}> not found."
+    assert result and result[0].get('__ask_retval') == 1, f"Type <{type_uri}> for entity <{entity_uri}> not found."
     print(f"INFO: Type for entity <{entity_uri}> confirmed as <{type_uri}>.")
 
     formatted_label_obj = format_literal(label, datatype="string")
@@ -124,7 +124,7 @@ def check_entity_exists(executor: SparqlExecutor, entity_uri: str, label: str, a
     """
     print(f"DEBUG: Label query: {label_query}")
     result = executor.execute_select(label_query)
-    assert result and result[0].get('ASK') is True, f"Label '{label}' for entity <{entity_uri}> not found. Query: {label_query}"
+    assert result and result[0].get('__ask_retval') == 1, f"Label '{label}' for entity <{entity_uri}> not found. Query: {label_query}"
     print(f"INFO: Label '{label}' for entity <{entity_uri}> confirmed.")
 
     for attr_to_check in attributes_to_check:
@@ -143,7 +143,7 @@ def check_entity_exists(executor: SparqlExecutor, entity_uri: str, label: str, a
         """
         print(f"DEBUG: Attribute query: {attr_query}")
         result = executor.execute_select(attr_query)
-        assert result and result[0].get('ASK') is True, \
+        assert result and result[0].get('__ask_retval') == 1, \
             f"Attribute {attr_to_check['property_curie']} with value '{attr_to_check['value']}' (formatted: {obj_formatted}) for entity <{entity_uri}> not found. Query: {attr_query}"
         print(f"INFO: Attribute {attr_to_check['property_curie']} for entity <{entity_uri}> with value '{attr_to_check['value']}' confirmed.")
     print(f"INFO: Entity <{entity_uri}> and its attributes successfully verified in graph <{source_graph_uri}>.")
