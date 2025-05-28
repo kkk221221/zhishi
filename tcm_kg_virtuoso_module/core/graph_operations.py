@@ -104,6 +104,7 @@ def add_entity(entity_data: Dict[str, Any], conn_manager: VirtuosoConnectionMana
     try:
         executor.begin_transaction()
         print(f"信息：正在执行实体 '{entity_label}' (URI: {entity_uri}) 的SPARQL更新。")
+        print(f"DEBUG [graph_operations.add_entity]: Full SPARQL query for {entity_uri}:\n{sparql_query}")
         executor.execute_update(sparql_query)
         executor.commit_transaction()
         print(f"成功：实体 '{entity_label}' (URI: {entity_uri}) 已成功添加，事务已提交。")
