@@ -2,6 +2,7 @@
 
 import os
 import re
+import logging # Import logging module
 
 # 通用工具函数模块
 # 提供文件操作、路径创建、文件名清理等辅助功能。
@@ -67,12 +68,33 @@ def clean_filename(filename: str) -> str:
     # 移除可能导致问题的开头或结尾的特殊字符（如下划线、点、空格 - 尽管空格已处理）
     filename = filename.strip('._ ')
     
-    # 防止文件名过长 (可选，根据需要调整)
-    # MAX_FILENAME_LENGTH = 255 # 通常文件系统限制
-    # if len(filename) > MAX_FILENAME_LENGTH - 10: # 保留空间给可能的扩展名
-    #     name_part, ext_part = os.path.splitext(filename)
-    #     name_part = name_part[:MAX_FILENAME_LENGTH - len(ext_part) - 10] # 截断
-    #     filename = name_part + ext_part
+    # 防止文件名过长
+    MAX_FILENAME_COMPONENT_LENGTH = 70 # Max length for this cleaned filename component
+
+    # If the filename (which might be a component) is too long, truncate it.
+    # This logic primarily targets the name part, preserving an extension if present.
+    if len(filename) > MAX_FILENAME_COMPONENT_LENGTH:
+        logging.warning(f"原始文件名组件 '{filename}' 清理后长度为 {len(filename)}，超过限制 {MAX_FILENAME_COMPONENT_LENGTH}，将被截断。")
+
+        name_part, ext_part = os.path.splitext(filename)
+
+        # If there's no extension, or the name_part itself is the whole filename
+        if not ext_part: # filename was 'verylongname'
+            name_part = filename
+            # ext_part remains ""
+
+        # Calculate how much of the name_part can be kept
+        # Max length for name_part = MAX_FILENAME_COMPONENT_LENGTH - length of extension (if any)
+        allowed_name_part_len = MAX_FILENAME_COMPONENT_LENGTH - len(ext_part)
+
+        # Ensure allowed_name_part_len is not negative (e.g. if extension itself is too long)
+        if allowed_name_part_len < 0:
+            allowed_name_part_len = 0 # Cannot keep any of name_part if ext is too long
+
+        truncated_name_part = name_part[:allowed_name_part_len]
+
+        filename = truncated_name_part + ext_part
+        logging.info(f"文件名组件截断为: '{filename}'")
 
     return filename
 

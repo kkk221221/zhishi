@@ -328,6 +328,8 @@ def perform_fine_grained_segmentation(
 
     all_structured_paragraphs = [] # 存储所有结构化段落的列表
     current_sub_section_title = None # 当前活动的子章节标题
+    MAX_RAW_SUB_TITLE_LENGTH = 50
+    MAX_CLEANED_SUB_TITLE_LENGTH = 35
 
     logging.info(f"开始对章节“{section_title}”（文档“{document_title}”）进行细粒度段落切分（共 {len(chunks)} 个文本块）。")
 
@@ -382,11 +384,35 @@ def perform_fine_grained_segmentation(
                     chunk_paragraphs_buffer.clear() # 清空缓冲区
 
                 # 更新当前子章节标题
-                potential_title = para_text.replace("SUB-SECTION-TITLE:", "").strip() # 提取标题文本
-                current_sub_section_title = utils_clean_filename(potential_title) if potential_title else "未命名子章节"
-                if not current_sub_section_title: # 如果清理后标题为空
-                     current_sub_section_title = "未命名子章节"
-                logging.debug(f"在章节“{section_title}”中识别到子章节标题：“{current_sub_section_title}”。")
+                raw_potential_title = para_text.replace("SUB-SECTION-TITLE:", "").strip() # 提取原始潜标题文本
+
+                if len(raw_potential_title) > MAX_RAW_SUB_TITLE_LENGTH:
+                    logging.warning(f"原始提取的子章节标题过长（{len(raw_potential_title)} > {MAX_RAW_SUB_TITLE_LENGTH}字符），可能不是一个有效的概括性标题。将忽略此子章节标题。原始标题：'{raw_potential_title[:100]}...'，文档《{document_title}》，章节“{section_title}”。")
+                    # current_sub_section_title 保持不变 (即沿用上一个子章节标题，或如果之前没有，则为 None，段落将归属于主章节)
+                    # 或者，如果希望这些段落明确不属于任何子章节（即使前一个也是子章节），则在此处设置 current_sub_section_title = None
+                    # 为了简化，我们先采取忽略策略，让其归属到上一个 current_sub_section_title 或 None
+                elif raw_potential_title:
+                    # 清理潜在标题
+                    cleaned_potential_title = utils_clean_filename(raw_potential_title)
+
+                    if not cleaned_potential_title: # 如果清理后标题为空
+                        logging.debug(f"原始子章节标题 '{raw_potential_title}' 清理后为空。忽略此子章节标题。")
+                        # current_sub_section_title 保持不变或设为 None
+                    elif len(cleaned_potential_title) > MAX_CLEANED_SUB_TITLE_LENGTH:
+                        logging.warning(f"清理后的子章节标题 '{cleaned_potential_title}' 仍然过长（{len(cleaned_potential_title)} > {MAX_CLEANED_SUB_TITLE_LENGTH}字符）。将忽略此子章节标题。文档《{document_title}》，章节“{section_title}”。")
+                        # current_sub_section_title 保持不变或设为 None
+                    else:
+                        # 只有当原始标题不太长，并且清理后也不太长且不为空时，才接受为新的子章节标题
+                        current_sub_section_title = cleaned_potential_title
+                        logging.debug(f"在章节“{section_title}”中识别并接受子章节标题：“{current_sub_section_title}”。")
+                else: # raw_potential_title 为空
+                    logging.debug(f"从 'SUB-SECTION-TITLE:' 标记后提取的原始子章节标题为空。忽略。")
+                    # current_sub_section_title 保持不变或设为 None
+
+                # 注意：如果上面任何一个条件导致 potential_title 被拒绝，
+                # chunk_paragraphs_buffer 中的内容将会被追加到之前的 current_sub_section_title
+                # （如果存在）或者作为主章节下的段落（如果 current_sub_section_title 为 None）。
+                # 这是期望的行为：如果一个 "SUB-SECTION-TITLE:" 无效，其后的段落不应错误地开创一个新的、无效的子章节。
             else: # 是普通段落内容
                 chunk_paragraphs_buffer.append(para_text)
         
