@@ -306,6 +306,11 @@ def process_tcm_books(llm_interface: LLMInterface):
             ensure_directory_exists(book_output_dir)
             print(f"  输出目录已确认/创建 (新规则): {book_output_dir}")
 
+            # Check if the book has already been processed
+            if os.path.exists(book_output_dir) and os.listdir(book_output_dir):
+                print(f"  书籍 《{book_title_original}》 似乎已经处理过 (输出目录非空)，跳过。")
+                continue
+
             # Phase 1: Initial Coarse-Grained Text Segmentation
             print(f"  Phase 1: 《{book_title_original}》被视为单一主要章节进行处理。")
             coarse_sections = [(book_title_original, book_content)] 

@@ -45,6 +45,11 @@ def process_database_content(llm_interface: LLMInterface):
             safe_file_title = clean_filename(file_title)
             output_filename = f"{safe_file_title}_chunked.txt"
             output_file_path = os.path.join(PROCESSED_DATABASE_DIR, output_filename)
+
+            # Check if the chunked file already exists
+            if os.path.exists(output_file_path):
+                print(f"  数据库文件 《{file_title}》 的分块输出似乎已经存在 ({output_filename})，跳过。")
+                continue
             
             write_text_file(output_file_path, chunked_text)
             # print(f"    LLM提示词: {prompt[:200]}...") # 打印部分提示词用于调试

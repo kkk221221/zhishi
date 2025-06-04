@@ -83,6 +83,11 @@ def process_clinical_scenarios(llm_interface: LLMInterface):
                     cleaned_base = f"untitled_case_{os.path.basename(raw_file_path).split('.')[0]}" # 提供一个基于原始路径的备用名
                 output_filename = f"{cleaned_base}.json" # 新的文件名为 .json
                 output_file_path = os.path.join(current_output_dir, output_filename)
+
+                # Check if the processed JSON file already exists
+                if os.path.exists(output_file_path):
+                    print(f"    临床案例 《{filename}》 的JSON输出文件似乎已经存在 ({output_filename})，跳过。")
+                    continue
                 
                 # 将提取的数据作为JSON字符串写入文件
                 # 使用 ensure_ascii=False 来正确处理中文字符，indent=4 来格式化输出

@@ -49,6 +49,11 @@ def process_modern_literature(llm_interface: LLMInterface):
             safe_file_title = clean_filename(file_title_original)
             output_filename = f"{safe_file_title}_summary.txt"
             output_file_path = os.path.join(PROCESSED_LITERATURE_DIR, output_filename)
+
+            # Check if the summary file already exists
+            if os.path.exists(output_file_path):
+                print(f"  文学作品 《{file_title_original}》 的摘要似乎已经存在 ({output_filename})，跳过。")
+                continue
             
             write_text_file(output_file_path, summary)
             # print(f"    LLM提示词: {prompt[:200]}...") # 打印部分提示词用于调试
