@@ -31,7 +31,8 @@ from src.data_layer.data_processing.utils import read_text_file, write_text_file
 from src.data_layer.data_processing.prompts.tcm_prompts import (
     SEMANTIC_MICRO_PARAGRAPH_SPLIT_TEMPLATE,
     IDENTIFY_AUTHOR_FROM_TITLE_TEMPLATE,
-    TOC_GENERATION_PROMPT_TEMPLATE # Added import for TOC_GENERATION_PROMPT_TEMPLATE
+    TOC_GENERATION_PROMPT_TEMPLATE, # Added import for TOC_GENERATION_PROMPT_TEMPLATE
+    SHORTEN_TITLE_PROMPT_TEMPLATE # Add this
 )
 
 RAW_TCM_BOOKS_DIR = "src/data_layer/data/raw/TCM_traditional_book"
@@ -328,8 +329,12 @@ def perform_fine_grained_segmentation(
 
     all_structured_paragraphs = [] # 存储所有结构化段落的列表
     current_sub_section_title = None # 当前活动的子章节标题
-    MAX_RAW_SUB_TITLE_LENGTH = 50
-    MAX_CLEANED_SUB_TITLE_LENGTH = 35
+
+    # Constants for sub-section title processing
+    MIN_LEN_FOR_SHORTENING = 30         # Raw titles with length >= this (and <= MAX_LEN_BEFORE_DIRECT_DISCARD) will be attempted to be shortened
+    MAX_LEN_BEFORE_DIRECT_DISCARD = 150 # Raw titles longer than this are discarded without attempting to shorten
+    MAX_CLEANED_SUB_TITLE_LENGTH = 35   # Final max length for a cleaned title (either original short or shortened) to be accepted
+    NO_SUITABLE_TITLE_MARKER = "不适合作标题" # Marker returned by LLM if shortening is not applicable
 
     logging.info(f"开始对章节“{section_title}”（文档“{document_title}”）进行细粒度段落切分（共 {len(chunks)} 个文本块）。")
 
@@ -347,22 +352,15 @@ def perform_fine_grained_segmentation(
             raw_llm_output = llm_interface.generate_text(prompt) # 调用LLM
             if raw_llm_output.startswith("错误："): # 检查LLM是否返回错误
                 logging.warning(f"LLM在为文档“{document_title}” - 章节“{section_title}”的细粒度切分区块 {i+1} 返回错误：{raw_llm_output}")
-                # 可选：将原始块作为未处理段落加入
-                # all_structured_paragraphs.append({"sub_section_title": current_sub_section_title, "paragraphs": [f"[由于LLM错误未处理的区块]:\n{chunk_text}"]})
-                continue # 跳过此区块或进行错误处理
+                continue
         except Exception as e: # 捕获LLM调用过程中的其他异常
             logging.error(f"LLM在为文档“{document_title}” - 章节“{section_title}”的细粒度切分区块 {i+1} 调用失败：{e}", exc_info=True)
-            # 可选：将原始块作为未处理段落加入
-            # all_structured_paragraphs.append({"sub_section_title": current_sub_section_title, "paragraphs": [f"[由于异常未处理的区块]:\n{chunk_text}"]})
-            continue # 跳过此区块
+            continue
 
         if not isinstance(raw_llm_output, str) or not raw_llm_output.strip(): # 检查LLM输出是否为非空字符串
             logging.warning(f"LLM为章节“{section_title}”的区块 {i+1} 返回了空或非字符串响应：'{raw_llm_output}'。")
-            # 可选：将原始块作为未处理段落加入
-            # all_structured_paragraphs.append({"sub_section_title": current_sub_section_title, "paragraphs": [f"[由于LLM空响应未处理的区块]:\n{chunk_text}"]})
             continue
 
-        # 按分隔符 ---PARAGRAPH_END--- 切分LLM的输出
         raw_paragraphs = raw_llm_output.split("---PARAGRAPH_END---")
 
         chunk_paragraphs_buffer = [] # 存储当前块处理的段落，直到遇到新的子章节标题或块结束
@@ -373,46 +371,53 @@ def perform_fine_grained_segmentation(
             if not para_text: # 跳过因额外换行或分隔符产生的空字符串
                 continue
             
-            # 检查是否为子章节标题 (以 "SUB-SECTION-TITLE:" 开头)
             if para_text.startswith("SUB-SECTION-TITLE:"):
-                # 如果当前缓冲区有段落，先保存它们到上一个子章节（或主章节）
                 if chunk_paragraphs_buffer:
                     all_structured_paragraphs.append({
-                        "sub_section_title": current_sub_section_title, # 这是上一个子标题
-                        "paragraphs": list(chunk_paragraphs_buffer) # 复制列表内容
+                        "sub_section_title": current_sub_section_title,
+                        "paragraphs": list(chunk_paragraphs_buffer)
                     })
-                    chunk_paragraphs_buffer.clear() # 清空缓冲区
+                    chunk_paragraphs_buffer.clear()
 
-                # 更新当前子章节标题
-                raw_potential_title = para_text.replace("SUB-SECTION-TITLE:", "").strip() # 提取原始潜标题文本
+                extracted_text_after_marker = para_text.replace("SUB-SECTION-TITLE:", "").strip()
+                new_sub_section_title_candidate = None # Stores the title that might become current_sub_section_title
 
-                if len(raw_potential_title) > MAX_RAW_SUB_TITLE_LENGTH:
-                    logging.warning(f"原始提取的子章节标题过长（{len(raw_potential_title)} > {MAX_RAW_SUB_TITLE_LENGTH}字符），可能不是一个有效的概括性标题。将忽略此子章节标题。原始标题：'{raw_potential_title[:100]}...'，文档《{document_title}》，章节“{section_title}”。")
-                    # current_sub_section_title 保持不变 (即沿用上一个子章节标题，或如果之前没有，则为 None，段落将归属于主章节)
-                    # 或者，如果希望这些段落明确不属于任何子章节（即使前一个也是子章节），则在此处设置 current_sub_section_title = None
-                    # 为了简化，我们先采取忽略策略，让其归属到上一个 current_sub_section_title 或 None
-                elif raw_potential_title:
-                    # 清理潜在标题
-                    cleaned_potential_title = utils_clean_filename(raw_potential_title)
+                if not extracted_text_after_marker:
+                    logging.debug(f"从 'SUB-SECTION-TITLE:' 标记后提取的原始子章节标题为空。忽略。文档《{document_title}》，章节“{section_title}”。")
+                elif len(extracted_text_after_marker) > MAX_LEN_BEFORE_DIRECT_DISCARD:
+                    logging.warning(f"原始提取的子章节标题过长（{len(extracted_text_after_marker)} > {MAX_LEN_BEFORE_DIRECT_DISCARD}字符），直接忽略。原始标题：'{extracted_text_after_marker[:100]}...'，文档《{document_title}》，章节“{section_title}”。")
+                elif len(extracted_text_after_marker) >= MIN_LEN_FOR_SHORTENING:
+                    logging.info(f"原始提取子章节标题长度为 {len(extracted_text_after_marker)}，在缩短尝试范围内。原文: '{extracted_text_after_marker[:100]}...'。文档《{document_title}》，章节“{section_title}”。")
+                    shorten_prompt = SHORTEN_TITLE_PROMPT_TEMPLATE.format(long_title_candidate=extracted_text_after_marker)
+                    try:
+                        shortened_title = llm_interface.generate_text(shorten_prompt)
+                        if shortened_title.startswith("错误："):
+                            logging.warning(f"LLM在尝试缩短标题时返回错误: {shortened_title}。原始标题: '{extracted_text_after_marker[:100]}...'")
+                        elif not shortened_title or shortened_title == NO_SUITABLE_TITLE_MARKER:
+                            logging.info(f"LLM未能将标题 '{extracted_text_after_marker[:100]}...' 缩短或标记为不适用。")
+                        else:
+                            logging.info(f"LLM将标题 '{extracted_text_after_marker[:100]}...' 缩短为 '{shortened_title}'")
+                            new_sub_section_title_candidate = shortened_title
+                    except Exception as e_shorten:
+                        logging.error(f"调用LLM缩短标题时发生异常: {e_shorten}。原始标题: '{extracted_text_after_marker[:100]}...'", exc_info=True)
+                else: # 长度 < MIN_LEN_FOR_SHORTENING (且不为空)
+                    # 作为短标题处理，直接成为候选标题，后续将进行清理和最终长度检查。
+                    new_sub_section_title_candidate = extracted_text_after_marker
 
-                    if not cleaned_potential_title: # 如果清理后标题为空
-                        logging.debug(f"原始子章节标题 '{raw_potential_title}' 清理后为空。忽略此子章节标题。")
-                        # current_sub_section_title 保持不变或设为 None
-                    elif len(cleaned_potential_title) > MAX_CLEANED_SUB_TITLE_LENGTH:
-                        logging.warning(f"清理后的子章节标题 '{cleaned_potential_title}' 仍然过长（{len(cleaned_potential_title)} > {MAX_CLEANED_SUB_TITLE_LENGTH}字符）。将忽略此子章节标题。文档《{document_title}》，章节“{section_title}”。")
-                        # current_sub_section_title 保持不变或设为 None
+                # 处理候选标题（原始的短标题或缩短后的标题）
+                if new_sub_section_title_candidate:
+                    cleaned_title = utils_clean_filename(new_sub_section_title_candidate)
+                    if not cleaned_title:
+                        logging.debug(f"候选子章节标题 '{new_sub_section_title_candidate}' 清理后为空。忽略。文档《{document_title}》，章节“{section_title}”。")
+                    elif len(cleaned_title) > MAX_CLEANED_SUB_TITLE_LENGTH:
+                        logging.warning(f"候选子章节标题 '{new_sub_section_title_candidate}' 清理后为 '{cleaned_title}'，仍然过长（{len(cleaned_title)} > {MAX_CLEANED_SUB_TITLE_LENGTH}字符）。将忽略。文档《{document_title}》，章节“{section_title}”。")
                     else:
-                        # 只有当原始标题不太长，并且清理后也不太长且不为空时，才接受为新的子章节标题
-                        current_sub_section_title = cleaned_potential_title
-                        logging.debug(f"在章节“{section_title}”中识别并接受子章节标题：“{current_sub_section_title}”。")
-                else: # raw_potential_title 为空
-                    logging.debug(f"从 'SUB-SECTION-TITLE:' 标记后提取的原始子章节标题为空。忽略。")
-                    # current_sub_section_title 保持不变或设为 None
-
-                # 注意：如果上面任何一个条件导致 potential_title 被拒绝，
-                # chunk_paragraphs_buffer 中的内容将会被追加到之前的 current_sub_section_title
-                # （如果存在）或者作为主章节下的段落（如果 current_sub_section_title 为 None）。
-                # 这是期望的行为：如果一个 "SUB-SECTION-TITLE:" 无效，其后的段落不应错误地开创一个新的、无效的子章节。
+                        # Valid title found and processed
+                        current_sub_section_title = cleaned_title
+                        logging.debug(f"在章节“{section_title}”中识别并接受子章节标题：“{current_sub_section_title}”。(源: '{new_sub_section_title_candidate}')")
+                # If new_sub_section_title_candidate is None (due to being too long initially, or shortening failed, or original short title was empty),
+                # current_sub_section_title remains unchanged from previous iteration / or stays None.
+                # This ensures paragraphs are appended to the correct (previous or main) section.
             else: # 是普通段落内容
                 chunk_paragraphs_buffer.append(para_text)
         
